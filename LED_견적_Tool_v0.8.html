@@ -877,8 +877,8 @@ async function exportToExcel() {
 
   // 3. 압축 후 다운로드
   const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
-  const dateStr = quoteDate ? quoteDate.replace(/-/g, '') : 'nodate';
-  const fileName = `LED_견적_${siteName}_${dateStr}.xlsx`;
+  const dateStr = quoteDate ? quoteDate.replace(/-/g, '').slice(2) : 'nodate';
+  const fileName = `(SELC to SEC) 스마트사이니지 특수설치 견적서 (${siteName})_${dateStr}.xlsx`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

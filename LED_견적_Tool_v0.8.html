@@ -261,7 +261,7 @@
       <div class="card-header"><span class="num">3</span> 보강대 설치</div>
       <div class="card-body">
         <div class="field">
-          <label>AL 프로파일 40×40 <span class="auto-badge">자동 반영</span></label>
+          <label id="al-label-card">AL 프로파일 40×40 <span class="auto-badge">자동 반영</span></label>
           <div class="auto-value" id="r-al-display" style="font-size:13px;">—</div>
           <div class="field-hint" id="r-al-hint"></div>
         </div>
@@ -331,7 +331,7 @@
       <div class="result-section">
         <div class="result-section-title">03. 보강대 설치</div>
         <div class="result-row">
-          <div class="label">AL 프로파일 40×40<small id="al-note"></small></div>
+          <div class="label" id="al-label-result">AL 프로파일 40×40<small id="al-note"></small></div>
           <div class="value" id="r-al-cost">-</div>
         </div>
         <div class="result-row">
@@ -591,8 +591,11 @@ function calc() {
   if(model==='IWC'||model==='MMF') hasAL = true;
   else if(model==='IEA'||model==='IFR') hasAL = (cols>=9||rows>=9);
 
-  const alQty  = hasAL ? Math.round(totalCab*UNIT.al_per_cab*10)/10 : 0;
-  const alBody = hasAL ? alQty*(UNIT.al_mat+UNIT.al_labor) : 0;
+  const alPerCab    = (model==='MMF') ? 0.9 : UNIT.al_per_cab;
+  const alUnitPrice = (model==='MMF') ? 46000 : (UNIT.al_mat+UNIT.al_labor);
+  const alSpec      = (model==='MMF') ? '30×60' : '40×40';
+  const alQty  = hasAL ? Math.round(totalCab*alPerCab*10)/10 : 0;
+  const alBody = hasAL ? alQty*alUnitPrice : 0;
   const alAcc  = hasAL ? alBody*UNIT.al_acc : 0;
   const j30    = alBody + alAcc;
 
@@ -649,7 +652,7 @@ function calc() {
     const reason = (model==='IWC'||model==='MMF') ? '자동 반영' : '9대 이상 — 자동 반영';
     document.getElementById('r-al-display').textContent = `${alQty}EA → ${fmt(alBody)} (부자재 포함 ${fmt(j30)})`;
     document.getElementById('r-al-display').className = 'auto-value';
-    document.getElementById('r-al-hint').textContent  = `${totalCab}대 × 1.7EA × 49,000원 · ${reason}`;
+    document.getElementById('r-al-hint').textContent  = `${totalCab}대 × ${alPerCab}EA × ${fmtN(alUnitPrice)}원 · ${reason}`;
   } else {
     const noReason = (model==='IAC'||model==='MMF-A') ? '해당 모델' : '가로·세로 9대 미만';
     document.getElementById('r-al-display').innerHTML =
@@ -683,7 +686,10 @@ function calc() {
   document.getElementById('r-sub1').textContent = fmt(j15);
 
   // ── 결과 03. 보강대 ──
-  document.getElementById('al-note').textContent   = hasAL ? `${alQty}EA × 49,000원` : '미반영';
+  const alLabelText = `AL 프로파일 ${alSpec}`;
+  document.getElementById('al-label-card').innerHTML   = `${alLabelText} <span class="auto-badge">자동 반영</span>`;
+  document.getElementById('al-label-result').innerHTML = `${alLabelText}<small id="al-note"></small>`;
+  document.getElementById('al-note').textContent   = hasAL ? `${alQty}EA × ${fmtN(alUnitPrice)}원` : '미반영';
   setv('r-al-cost', hasAL ? fmtN(alBody) : '-', !hasAL);
   setv('r-al-acc',  hasAL ? fmtN(alAcc) : '-', !hasAL);
   document.getElementById('steel-note').textContent = steelInclude ? `${stQty}EA × 190,000원` : '미선택';

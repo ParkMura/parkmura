@@ -837,8 +837,8 @@ async function exportToExcel() {
 
   // 02. 작업비 F17~F28 — 빈칸 (사용자 입력)
 
-  // 03. 보강대
-  inj('F31', '86', CR.stQty);
+  // 03. 보강대 — F31/F32/F34 소수점 보존
+  s2 = s2.replace(/<c r="F31" s="86"><v>0<\/v><\/c>/, `<c r="F31" s="86"><v>${CR.stQty}<\/v><\/c>`);
   // F32/F34: 소수점 보존 (alQty 소수점 유지)
   const alVal32 = CR.hasAL && CR.model !== 'MMF' ? CR.alQty : 0;
   const alVal34 = CR.hasAL && CR.model === 'MMF' ? CR.alQty : 0;

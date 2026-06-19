@@ -797,7 +797,7 @@ async function exportToExcel() {
     '{{SELC_MGR}}':   selcMgr,
     '{{SITE_NAME}}':  siteName,
     '{{ITEM_NAME}}':  'LED설치',
-    '{{ITEM_SPEC}}':  (CR.specLabel || '') + ' (' + n(CR.totalCab) + ')',
+    '{{ITEM_SPEC}}':  CR.specLabel || '',
   };
   for (const [k, v] of Object.entries(s1Map)) {
     s1 = s1.split(k).join(String(v));

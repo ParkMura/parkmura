@@ -732,7 +732,7 @@ function calc() {
     productName: `${model} ${pp} ${cols}×${rows}`,
     specLabel: `${model} ${pp} (${totalCab}대)`,
     rateLabel,
-    totalArea: Math.floor(totalArea*100)/100,
+    totalArea,
     totalCab, lsmQty, calibQty, dehumidQty, visitQty, drawQty, consultQty,
     installRate, liftD, fanQty,
     distLabel: {50:'50km 이하(왕복)',100:'100km 이하(왕복)',250:'250km 이하(왕복)',999:'250km 초과(왕복)'}[distVal],

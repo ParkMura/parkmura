@@ -570,7 +570,7 @@ function calc() {
   const sboxTotal = sboxH * sboxV;
 
   const lsmQty     = sboxTotal * 0.5;
-  const calibQty   = (model==='IWC'||model==='MMF') ? 0.5 : 0;
+  const calibQty   = sboxTotal * 0.5;
   const dehumidQty = isMetro ? 0.5 : 1;
   const visitQty   = isMetro ? 0 : 1;
 
@@ -672,13 +672,8 @@ function calc() {
   setv('r-install', fmtN(j8));
   document.getElementById('lsm-note').textContent = `SBOX ${sboxTotal}대 × 0.5품`;
   setv('r-lsm-cost', fmtN(j11));
-  if(calibQty > 0) {
-    document.getElementById('r-calib').previousElementSibling.querySelector('small').textContent = 'IWC/MMF — 현장당 0.5품';
-    setv('r-calib', fmtN(j12));
-  } else {
-    document.getElementById('r-calib').previousElementSibling.querySelector('small').textContent = '해당없음';
-    setv('r-calib', '-', true);
-  }
+  document.getElementById('r-calib').previousElementSibling.querySelector('small').textContent = `SBOX ${sboxTotal}대 × 0.5품`;
+  setv('r-calib', fmtN(j12));
   document.getElementById('dehumid-note').textContent = `${dehumidQty}품 (${isMetro?'수도권':'지방'})`;
   setv('r-dehumid-cost', fmtN(j13));
   document.getElementById('inspect-note').textContent = `${totalCab}대 × ${fmtN(UNIT.inspect)}원`;
@@ -834,18 +829,22 @@ async function exportToExcel() {
   s2 = s2.replace(/<c r="F8" s="74"><v>0<\/v><\/c>/, `<c r="F8" s="74"><v>${iRate === 220576.02 ? ta : 0}<\/v><\/c>`);
   s2 = s2.replace(/<c r="F9" s="74"><v>0<\/v><\/c>/, `<c r="F9" s="74"><v>${iRate === 252086.88 ? ta : 0}<\/v><\/c>`);
   s2 = s2.replace(/<c r="F10" s="74"><v>0<\/v><\/c>/, `<c r="F10" s="74"><v>${iRate === 283597.74 ? ta : 0}<\/v><\/c>`);
-  inj('F11', '76', CR.lsmQty);
-  inj('F12', '145', CR.calibQty);
-  inj('F13', '76', CR.dehumidQty);
+  // F11/F12/F13: 소수점 보존 (0.5 등 직접 주입)
+  s2 = s2.replace(/<c r="F11" s="76"><v>0<\/v><\/c>/, `<c r="F11" s="76"><v>${CR.lsmQty}<\/v><\/c>`);
+  s2 = s2.replace(/<c r="F12" s="145"><v>0<\/v><\/c>/, `<c r="F12" s="145"><v>${CR.calibQty}<\/v><\/c>`);
+  s2 = s2.replace(/<c r="F13" s="76"><v>0<\/v><\/c>/, `<c r="F13" s="76"><v>${CR.dehumidQty}<\/v><\/c>`);
   inj('F14', '244', CR.totalCab);
 
   // 02. 작업비 F17~F28 — 빈칸 (사용자 입력)
 
   // 03. 보강대
   inj('F31', '86', CR.stQty);
-  inj('F32', '86', CR.hasAL && CR.model !== 'MMF' ? CR.alQty : 0);
+  // F32/F34: 소수점 보존 (alQty 소수점 유지)
+  const alVal32 = CR.hasAL && CR.model !== 'MMF' ? CR.alQty : 0;
+  const alVal34 = CR.hasAL && CR.model === 'MMF' ? CR.alQty : 0;
+  s2 = s2.replace(/<c r="F32" s="86"><v>0<\/v><\/c>/, `<c r="F32" s="86"><v>${alVal32}<\/v><\/c>`);
   inj('F33', '86', 0);
-  inj('F34', '86', CR.hasAL && CR.model === 'MMF' ? CR.alQty : 0);
+  s2 = s2.replace(/<c r="F34" s="86"><v>0<\/v><\/c>/, `<c r="F34" s="86"><v>${alVal34}<\/v><\/c>`);
 
   // 04. 추가사항
   inj('F37', '82', CR.isLarge ? 1 : 0);

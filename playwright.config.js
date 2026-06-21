@@ -1,8 +1,5 @@
 const { defineConfig, devices } = require("@playwright/test");
 
-// In CI the game repo is checked out to ./game; locally point to ../new-chat
-const gameDir = process.env.CI ? "./game" : "../new-chat";
-
 module.exports = defineConfig({
   testDir: "./tests/e2e",
   timeout: 15000,
@@ -16,11 +13,17 @@ module.exports = defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: {
+          executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+          args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        },
+      },
     },
   ],
   webServer: {
-    command: `npx serve ${gameDir} -p 3000 --no-clipboard`,
+    command: "npx serve . -p 3000 --no-clipboard",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 15000,

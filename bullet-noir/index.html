@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shadow Echo</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <canvas id="game" aria-label="Shadow Echo tactical shooter"></canvas>
+
+      <section class="hud top">
+        <div>
+          <span>STATUS</span>
+          <strong id="status">READY</strong>
+        </div>
+        <div>
+          <span>AMMO</span>
+          <strong id="ammo">24/24</strong>
+        </div>
+        <div>
+          <span>ALIVE</span>
+          <strong id="alive">6</strong>
+        </div>
+        <div>
+          <span>SCORE</span>
+          <strong id="score">0</strong>
+        </div>
+      </section>
+
+      <section class="hud bottom">
+        <div class="meter">
+          <span>HEALTH</span>
+          <i><b id="health"></b></i>
+        </div>
+        <div class="meter">
+          <span>NOISE</span>
+          <i><b id="noise"></b></i>
+        </div>
+      </section>
+
+      <section id="overlay" class="overlay">
+        <div>
+          <p>TACTICAL ECHO PROTOTYPE</p>
+          <h1>Shadow Echo</h1>
+          <button id="start" type="button">Deploy</button>
+        </div>
+      </section>
+    </main>
+    <script src="game.js"></script>
+  </body>
+</html>

@@ -95,7 +95,7 @@
     let skillEnergy = 0;
     let skillActive = false;
     let skillTimer = 0;
-    let currentWeapon = 0; // 0=소총, 1=산탄총, 2=마취총
+    let currentWeapon = 0; // 0=소총, 1=산탄총, 2=마취총, 3=폭탄
     const taserBullets = [];
     let shake = 0;
     let gameOverTimer = 0;
@@ -238,7 +238,7 @@
       if (event.code === "Digit2") cameraMode = 2;
       if (event.code === "Tab" && state === "play") {
         event.preventDefault();
-        currentWeapon = (currentWeapon + 1) % 3;
+        currentWeapon = (currentWeapon + 1) % 4;
       }
     });
     window.addEventListener("keyup", (event) => keys.delete(event.code));
@@ -1675,17 +1675,17 @@
         }
       } else {
         const mobileFireRifle = isMobile && currentWeapon === 0 && mobileControls.aimAtEdge;
-        const mobileFireOther = isMobile && currentWeapon !== 0 && mobileControls.shoot;
+        const mobileFireOther = isMobile && currentWeapon >= 1 && currentWeapon <= 2 && mobileControls.shoot;
         if (mouse.down || mobileFireRifle || mobileFireOther) fire();
       }
-      if (!skillActive && (mouse.right || keys.has("KeyQ") || (isMobile && mobileControls.bomb))) throwBomb(aimTarget);
+      if (!skillActive && (mouse.right || keys.has("KeyQ"))) throwBomb(aimTarget);
       if (keys.has("KeyE") && skillEnergy >= 1 && !skillActive) {
         skillActive = true;
         skillTimer = 3.0;
         shootCooldown = 0;
       }
       mobileControls.bomb = false;
-      if (mobileControls.swap) { currentWeapon = (currentWeapon + 1) % 3; mobileControls.swap = false; }
+      if (mobileControls.swap) { currentWeapon = (currentWeapon + 1) % 4; mobileControls.swap = false; }
 
       for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
@@ -2912,11 +2912,49 @@
       drawBlockingPropOverlays();
       for (const b of bombs) drawBomb(b);
       if (isMobile) drawMobileAimCursorWorld();
+      if (isMobile && currentWeapon === 3 && mobileControls.shoot) drawBombAimPreview();
       ctx.restore();
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
       drawRaidWarningOverlay();
       drawHud();
       if (isMobile) drawMobileControls();
+    }
+
+    function drawBombAimPreview() {
+      const d = mobileControls.aimDeflection;
+      if (d < 0.06) return;
+      const maxWorldRadius = Math.min(width, height) * 0.38 / camera.zoom;
+      const aimX = player.x + mobileControls.aimDirX * d * maxWorldRadius;
+      const aimY = player.y + mobileControls.aimDirY * d * maxWorldRadius;
+      const dx = aimX - player.x, dy = aimY - player.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const range = 140;
+      const tx = clamp(player.x + dx / dist * range, 70, world.w - 70);
+      const ty = clamp(player.y + dy / dist * range, 70, world.h - 70);
+      const z = camera.zoom;
+      ctx.save();
+      // 점선 궤적
+      ctx.strokeStyle = "rgba(255, 195, 40, 0.82)";
+      ctx.lineWidth = 2.4 / z;
+      ctx.setLineDash([8 / z, 6 / z]);
+      ctx.beginPath();
+      ctx.moveTo(player.x, player.y);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // 착탄 원
+      ctx.strokeStyle = "rgba(255, 130, 25, 0.92)";
+      ctx.lineWidth = 2.2 / z;
+      ctx.beginPath();
+      ctx.arc(tx, ty, 15 / z, 0, Math.PI * 2);
+      ctx.stroke();
+      // 폭발 범위 (세계 단위 220 = 실제 폭발 반경)
+      ctx.strokeStyle = "rgba(255, 60, 20, 0.22)";
+      ctx.lineWidth = 1.2 / z;
+      ctx.beginPath();
+      ctx.arc(tx, ty, 220, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
     }
 
     function drawRaidWarningOverlay() {
@@ -3712,7 +3750,38 @@
       }
       if (isPlayer && currentWeapon === 1) { drawShotgun(); return; }
       if (isPlayer && currentWeapon === 2) { drawTaserGun(); return; }
+      if (isPlayer && currentWeapon === 3) { drawBombInHand(); return; }
       drawRifle(isPlayer);
+    }
+
+    function drawBombInHand() {
+      // 손에 든 수류탄
+      ctx.fillStyle = "#2e3840";
+      ctx.strokeStyle = "rgba(0,0,0,0.82)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(14, 0, 10, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      // 도화선
+      ctx.strokeStyle = "#9a8830";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(14, -10);
+      ctx.quadraticCurveTo(21, -16, 19, -21);
+      ctx.stroke();
+      // 하이라이트
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.beginPath();
+      ctx.arc(10, -3, 4, 0, Math.PI * 2);
+      ctx.fill();
+      // 세로 줄 (수류탄 무늬)
+      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(14, -10); ctx.lineTo(14, 10);
+      ctx.moveTo(7, -7); ctx.lineTo(7, 7);
+      ctx.moveTo(21, -7); ctx.lineTo(21, 7);
+      ctx.stroke();
     }
 
     function drawShotgun() {
@@ -4355,10 +4424,10 @@
       ctx.font = "700 11px Arial";
       ctx.fillStyle = bombCooldown > 0 ? "#9aa1aa" : "#f4d89a";
       ctx.fillText("Q Bomb", 22, 58);
-      const wColors = ["#ffd776", "#ff9944", "#88ccff"];
-      const wNames = ["[Tab] 소총", "[Tab] 산탄총", "[Tab] 마취총"];
-      ctx.fillStyle = wColors[currentWeapon];
-      ctx.fillText(wNames[currentWeapon], 22, 74);
+      const wColors = ["#ffd776", "#ff9944", "#88ccff", "#ff8844"];
+      const wNames = ["[Tab] 소총", "[Tab] 산탄총", "[Tab] 마취총", "[Tab] 폭탄"];
+      ctx.fillStyle = wColors[currentWeapon] || "#ffd776";
+      ctx.fillText(wNames[currentWeapon] || "", 22, 74);
       drawGameMenuButton();
       drawSpecialForcesToggle();
       drawCameraButtons();
@@ -4492,11 +4561,11 @@
       const attackR = Math.min(70, Math.max(62, width * 0.126));
       const attackY = height - 112;
       const actionX = width - safeRight - base;
-      const weaponNames = ["소총", "산탄총", "마취총"];
+      const weaponNames = ["소총", "산탄총", "마취총", "폭탄"];
       return {
         stick: { x: 88, y: height - 112, r: 58 },
         attack: { x: width - 88, y: attackY, r: attackR },
-        bomb: { id: "bomb", label: "BOMB", x: actionX, y: attackY - attackR - gap - base, w: base, h: base },
+        bomb: { id: "bomb", label: currentWeapon === 3 ? "BOMB ON" : "BOMB", x: actionX, y: attackY - attackR - gap - base, w: base, h: base },
         dodge: { id: "dodge", label: "DASH", x: actionX, y: attackY - attackR - gap * 2 - base * 2, w: base, h: base },
         swap: { id: "swap", label: weaponNames[currentWeapon], x: actionX - base - gap, y: attackY - attackR - gap - base, w: base, h: base }
       };
@@ -4635,7 +4704,7 @@
       if (handleSpecialForcesToggleClick(p.x, p.y)) return;
       const action = mobileActionAt(p.x, p.y);
         if (action === "bomb") {
-          mobileControls.bomb = true;
+          currentWeapon = 3; // 폭탄 무기로 전환
         } else if (action === "dodge") {
           mobileControls.dodge = true;
         } else if (action === "swap") {
@@ -4675,6 +4744,14 @@
         if (touch.identifier === mobileControls.aimId) mobileControls.aimId = null;
       }
       if (mobileControls.aimId === null) {
+        // 폭탄 무기: AIM 손 뗄 때 투척
+        if (currentWeapon === 3 && mobileControls.shoot && mobileControls.aimDeflection > 0 && bombCooldown <= 0 && !skillActive && state === "play") {
+          const maxWorldRadius = Math.min(width, height) * 0.38 / camera.zoom;
+          throwBomb({
+            x: player.x + mobileControls.aimDirX * mobileControls.aimDeflection * maxWorldRadius,
+            y: player.y + mobileControls.aimDirY * mobileControls.aimDeflection * maxWorldRadius
+          });
+        }
         mobileControls.shoot = false;
         mobileControls.aimAtEdge = false;
         mobileControls.aimAnchorX = 0;

@@ -127,6 +127,8 @@
       aimScreenY: 0,
       aimTouchX: 0,
       aimTouchY: 0,
+      aimAnchorX: 0,
+      aimAnchorY: 0,
       shoot: false,
       aimAtEdge: false,
       bomb: false,
@@ -4352,6 +4354,9 @@
         } else if (p.x > width * 0.54 && mobileControls.aimId === null) {
           mobileControls.aimId = touch.identifier;
           mobileControls.shoot = true;
+          mobileControls.aimAnchorX = p.x;
+          mobileControls.aimAnchorY = p.y;
+          mobileControls.aimAtEdge = false;
           updateMobileAttackStick(p.x, p.y, true);
         }
       }
@@ -4379,6 +4384,8 @@
       if (mobileControls.aimId === null) {
         mobileControls.shoot = false;
         mobileControls.aimAtEdge = false;
+        mobileControls.aimAnchorX = 0;
+        mobileControls.aimAnchorY = 0;
         mobileControls.aimKnobX = 0;
         mobileControls.aimKnobY = 0;
         mobileControls.aimTouchX = 0;
@@ -4444,7 +4451,11 @@
       }
       mobileControls.aimTouchX = x;
       mobileControls.aimTouchY = y;
-      mobileControls.aimAtEdge = (d >= limit);
+      // 처음 손가락 댄 위치에서 얼마나 밀었는지로 발사 판정
+      const anchorDx = x - mobileControls.aimAnchorX;
+      const anchorDy = y - mobileControls.aimAnchorY;
+      const dragFromAnchor = Math.hypot(anchorDx, anchorDy);
+      mobileControls.aimAtEdge = (dragFromAnchor >= stick.r * 0.72);
     }
 
     function mobileActionAt(x, y) {

@@ -4441,13 +4441,14 @@
       const anchorDy = y - mobileControls.aimAnchorY;
       const dragDist = Math.hypot(anchorDx, anchorDy);
       const maxDrag = stick.r;
-      const deflection = Math.min(1, dragDist / maxDrag);
-      const dirX = dragDist < 6 ? Math.cos(player.angle || 0) : anchorDx / dragDist;
-      const dirY = dragDist < 6 ? Math.sin(player.angle || 0) : anchorDy / dragDist;
+      // 데드존: 15px 미만 드래그는 과녁 안 움직임 (터치 초기 손떨림 방지)
+      const DEAD = 15;
+      const dirX = dragDist < DEAD ? Math.cos(player.angle || 0) : anchorDx / dragDist;
+      const dirY = dragDist < DEAD ? Math.sin(player.angle || 0) : anchorDy / dragDist;
+      const deflection = dragDist < DEAD ? 0 : Math.min(1, (dragDist - DEAD) / (maxDrag - DEAD));
 
-      mobileControls.aimKnobX = dirX * Math.min(maxDrag * 0.72, dragDist);
-      mobileControls.aimKnobY = dirY * Math.min(maxDrag * 0.72, dragDist);
-      // 방향/세기만 저장 → 렌더링 시 현재 캐릭터 위치 기준으로 재계산
+      mobileControls.aimKnobX = (dragDist < DEAD ? 0 : dirX) * Math.min(maxDrag * 0.72, dragDist);
+      mobileControls.aimKnobY = (dragDist < DEAD ? 0 : dirY) * Math.min(maxDrag * 0.72, dragDist);
       mobileControls.aimDirX = dirX;
       mobileControls.aimDirY = dirY;
       mobileControls.aimDeflection = deflection;

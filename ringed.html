@@ -95,6 +95,8 @@
     let skillEnergy = 0;
     let skillActive = false;
     let skillTimer = 0;
+    let currentWeapon = 0; // 0=소총, 1=산탄총, 2=마취총
+    const taserBullets = [];
     let shake = 0;
     let gameOverTimer = 0;
     let aimRay = null;
@@ -127,7 +129,8 @@
       aimTouchY: 0,
       shoot: false,
       bomb: false,
-      dodge: false
+      dodge: false,
+      swap: false
     };
     let audioReady = false;
     let audioCtx = null;
@@ -227,6 +230,10 @@
       if (event.code === "Escape" && state === "play") goMainMenu();
       if (event.code === "Digit1") cameraMode = 1;
       if (event.code === "Digit2") cameraMode = 2;
+      if (event.code === "Tab" && state === "play") {
+        event.preventDefault();
+        currentWeapon = (currentWeapon + 1) % 3;
+      }
     });
     window.addEventListener("keyup", (event) => keys.delete(event.code));
     window.addEventListener("mousemove", (event) => {
@@ -792,6 +799,8 @@
       skillEnergy = 0;
       skillActive = false;
       skillTimer = 0;
+      currentWeapon = 0;
+      taserBullets.length = 0;
       wave = 1;
       spawnTimer = 0;
       gameOverTimer = 0;
@@ -1214,46 +1223,64 @@
 
     function fire() {
       if (shootCooldown > 0) return;
-      shootCooldown = 0.11;
-      playSfx("playerGun", 0.94 + Math.random() * 0.08);
       const dx = Math.cos(player.angle);
       const dy = Math.sin(player.angle);
       const sx = player.x + dx * 34;
       const sy = player.y + dy * 34;
-      const hit = raycastShot(sx, sy, dx, dy, 980);
-      tracers.push({
-        x1: sx,
-        y1: sy,
-        x2: hit.x,
-        y2: hit.y,
-        life: 0.09,
-        maxLife: 0.09
-      });
-      if (hit.enemy) {
-        hit.enemy.hp -= 44;
-        burst(hit.x, hit.y, "#9f2a24", 5);
-      } else if (hit.solid) {
-        burst(hit.x, hit.y, "#f4efe8", 5);
+
+      if (currentWeapon === 0) {
+        // 소총 - 단발 레이캐스트, 데미지 44
+        shootCooldown = 0.11;
+        playSfx("playerGun", 0.94 + Math.random() * 0.08);
+        const hit = raycastShot(sx, sy, dx, dy, 980);
+        tracers.push({ x1: sx, y1: sy, x2: hit.x, y2: hit.y, life: 0.09, maxLife: 0.09 });
+        if (hit.enemy) { hit.enemy.hp -= 44; burst(hit.x, hit.y, "#9f2a24", 5); }
+        else if (hit.solid) burst(hit.x, hit.y, "#f4efe8", 5);
+        flashes.push({ x: sx + dx * 18, y: sy + dy * 18, angle: player.angle, life: 0.075, maxLife: 0.075 });
+        for (let i = 0; i < 4; i++) {
+          particles.push({ x: sx, y: sy,
+            vx: Math.cos(player.angle + (Math.random() - 0.5) * 0.7) * (80 + Math.random() * 180),
+            vy: Math.sin(player.angle + (Math.random() - 0.5) * 0.7) * (80 + Math.random() * 180),
+            life: 0.14 + Math.random() * 0.12, color: "#ffd776", r: 2 + Math.random() * 3 });
+        }
+        shake = Math.max(shake, 4);
+
+      } else if (currentWeapon === 1) {
+        // 산탄총 - 5발 산탄, 데미지 57 (+30%), 사거리 500, 쿨다운 0.55s
+        shootCooldown = 0.55;
+        playSfx("playerGun", 0.82 + Math.random() * 0.08);
+        for (let p = -2; p <= 2; p++) {
+          const spread = p * 0.12 + (Math.random() - 0.5) * 0.06;
+          const pdx = Math.cos(player.angle + spread);
+          const pdy = Math.sin(player.angle + spread);
+          const hit = raycastShot(sx, sy, pdx, pdy, 500);
+          tracers.push({ x1: sx, y1: sy, x2: hit.x, y2: hit.y, life: 0.07, maxLife: 0.07 });
+          if (hit.enemy) { hit.enemy.hp -= 57; burst(hit.x, hit.y, "#9f2a24", 4); }
+          else if (hit.solid) burst(hit.x, hit.y, "#f4efe8", 3);
+        }
+        flashes.push({ x: sx + dx * 14, y: sy + dy * 14, angle: player.angle, life: 0.1, maxLife: 0.1 });
+        for (let i = 0; i < 8; i++) {
+          particles.push({ x: sx, y: sy,
+            vx: Math.cos(player.angle + (Math.random() - 0.5) * 1.1) * (100 + Math.random() * 220),
+            vy: Math.sin(player.angle + (Math.random() - 0.5) * 1.1) * (100 + Math.random() * 220),
+            life: 0.12 + Math.random() * 0.1, color: "#ffd776", r: 2 + Math.random() * 2.5 });
+        }
+        shake = Math.max(shake, 8);
+
+      } else if (currentWeapon === 2) {
+        // 마취총 - 투사체 발사, 데미지 22 + 슬로우 2.5초, 쿨다운 0.3s
+        shootCooldown = 0.3;
+        playSfx("playerGun", 0.72 + Math.random() * 0.06);
+        const bspeed = 420;
+        taserBullets.push({ x: sx, y: sy, vx: dx * bspeed, vy: dy * bspeed, life: 1.4, r: 6 });
+        for (let i = 0; i < 3; i++) {
+          particles.push({ x: sx, y: sy,
+            vx: Math.cos(player.angle + (Math.random() - 0.5) * 0.5) * (60 + Math.random() * 100),
+            vy: Math.sin(player.angle + (Math.random() - 0.5) * 0.5) * (60 + Math.random() * 100),
+            life: 0.1 + Math.random() * 0.08, color: "#88ccff", r: 3 + Math.random() * 2 });
+        }
+        shake = Math.max(shake, 2);
       }
-      flashes.push({
-        x: sx + Math.cos(player.angle) * 18,
-        y: sy + Math.sin(player.angle) * 18,
-        angle: player.angle,
-        life: 0.075,
-        maxLife: 0.075
-      });
-      for (let i = 0; i < 4; i++) {
-        particles.push({
-          x: sx,
-          y: sy,
-          vx: Math.cos(player.angle + (Math.random() - 0.5) * 0.7) * (80 + Math.random() * 180),
-          vy: Math.sin(player.angle + (Math.random() - 0.5) * 0.7) * (80 + Math.random() * 180),
-          life: 0.14 + Math.random() * 0.12,
-          color: "#ffd776",
-          r: 2 + Math.random() * 3
-        });
-      }
-      shake = Math.max(shake, 4);
     }
 
     function throwBomb(target) {
@@ -1650,6 +1677,7 @@
         shootCooldown = 0;
       }
       mobileControls.bomb = false;
+      if (mobileControls.swap) { currentWeapon = (currentWeapon + 1) % 3; mobileControls.swap = false; }
 
       for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
@@ -1657,6 +1685,16 @@
         b.y += b.vy * dt;
         b.life -= dt;
         if (b.life <= 0 || b.x < 0 || b.x > world.w || b.y < 0 || b.y > world.h) bullets.splice(i, 1);
+      }
+      for (let i = taserBullets.length - 1; i >= 0; i--) {
+        const tb = taserBullets[i];
+        tb.x += tb.vx * dt;
+        tb.y += tb.vy * dt;
+        tb.life -= dt;
+        if (tb.life <= 0 || tb.x < 0 || tb.x > world.w || tb.y < 0 || tb.y > world.h || pointInsideSolid(tb.x, tb.y)) {
+          if (tb.life > 0 && (tb.x >= 0 && tb.x <= world.w && tb.y >= 0 && tb.y <= world.h)) burst(tb.x, tb.y, "#88ccff", 4);
+          taserBullets.splice(i, 1);
+        }
       }
       for (let i = bombs.length - 1; i >= 0; i--) {
         const b = bombs[i];
@@ -1674,6 +1712,7 @@
       for (let i = enemies.length - 1; i >= 0; i--) {
         const e = enemies[i];
         e.wobble += dt * 8;
+        if ((e.slowTimer || 0) > 0) e.slowTimer -= dt;
         if (e.dropTime > 0) {
           e.dropTime -= dt;
           continue;
@@ -1736,6 +1775,17 @@
             e.hp -= 34;
             bullets.splice(j, 1);
             burst(b.x, b.y, "#c8e7a0", 8);
+            break;
+          }
+        }
+        for (let j = taserBullets.length - 1; j >= 0; j--) {
+          const tb = taserBullets[j];
+          if (dist2(e.x, e.y, tb.x, tb.y) < (e.r + tb.r) * (e.r + tb.r)) {
+            e.hp -= 22;
+            e.slowTimer = 2.5;
+            taserBullets.splice(j, 1);
+            burst(tb.x, tb.y, "#88ccff", 10);
+            skillEnergy = Math.min(1, skillEnergy + 0.125);
             break;
           }
         }
@@ -2248,7 +2298,7 @@
     }
 
     function moveEnemySmart(enemy, desiredX, desiredY, toPlayerX, toPlayerY, distanceToPlayer, dt) {
-      const speed = enemy.speed * dt;
+      const speed = enemy.speed * dt * ((enemy.slowTimer || 0) > 0 ? 0.3 : 1);
       let vx = desiredX;
       let vy = desiredY;
       const mag = Math.hypot(vx, vy) || 1;
@@ -2834,6 +2884,7 @@
       drawPickups();
       drawAimLaser();
       for (const b of bullets) drawBullet(b);
+      for (const tb of taserBullets) drawTaserBullet(tb);
       drawTracers();
       drawEnemyTracers();
       drawFlameBursts();
@@ -3295,6 +3346,20 @@
       ctx.restore();
     }
 
+    function drawTaserBullet(tb) {
+      ctx.save();
+      ctx.translate(tb.x, tb.y);
+      const pulse = 0.7 + 0.3 * Math.sin(tb.life * 30);
+      ctx.fillStyle = "rgba(100, 200, 255, " + (0.9 * pulse) + ")";
+      ctx.strokeStyle = "rgba(220, 245, 255, 0.7)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, tb.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
     function drawBomb(b) {
       const t = 1 - Math.max(0, b.life / b.maxLife);
       const arcHeight = Math.sin(t * Math.PI) * 42;
@@ -3388,7 +3453,55 @@
         drawFlamethrower(isPlayer);
         return;
       }
+      if (isPlayer && currentWeapon === 1) { drawShotgun(); return; }
+      if (isPlayer && currentWeapon === 2) { drawTaserGun(); return; }
       drawRifle(isPlayer);
+    }
+
+    function drawShotgun() {
+      ctx.fillStyle = "rgba(255, 200, 50, 0.96)";
+      ctx.strokeStyle = "rgba(0,0,0,0.72)";
+      ctx.lineWidth = 1.4;
+      ctx.fillRect(-5, -6, 24, 12);
+      ctx.strokeRect(-5, -6, 24, 12);
+      ctx.fillRect(19, -5, 6, 10);
+      ctx.strokeRect(19, -5, 6, 10);
+      ctx.fillRect(24, -8, 9, 16);
+      ctx.strokeRect(24, -8, 9, 16);
+      ctx.beginPath();
+      ctx.moveTo(5, 6);
+      ctx.lineTo(10, 16);
+      ctx.lineTo(16, 16);
+      ctx.lineTo(12, 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    function drawTaserGun() {
+      ctx.fillStyle = "rgba(120, 200, 255, 0.96)";
+      ctx.strokeStyle = "rgba(0,0,0,0.72)";
+      ctx.lineWidth = 1.4;
+      ctx.fillRect(-4, -3, 22, 6);
+      ctx.strokeRect(-4, -3, 22, 6);
+      ctx.fillRect(18, -2, 20, 4);
+      ctx.strokeRect(18, -2, 20, 4);
+      ctx.beginPath();
+      ctx.moveTo(5, 3);
+      ctx.lineTo(9, 11);
+      ctx.lineTo(15, 11);
+      ctx.lineTo(11, 3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(88,200,255,0.9)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(37, 0);
+      ctx.lineTo(44, -3);
+      ctx.moveTo(37, 0);
+      ctx.lineTo(44, 3);
+      ctx.stroke();
     }
 
     function drawRifle(isPlayer) {
@@ -3669,6 +3782,9 @@
       for (const b of bullets) {
         drawLightTexture(lightCtx, assets.lightSmall, screenX(b.x), screenY(b.y), 0, 64 * z, 64 * z, 0.45);
       }
+      for (const tb of taserBullets) {
+        drawLightTexture(lightCtx, assets.lightSmall, screenX(tb.x), screenY(tb.y), 0, 80 * z, 80 * z, 0.5);
+      }
 
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
       ctx.drawImage(lightCanvas, 0, 0, width, height);
@@ -3932,7 +4048,7 @@
     function drawHud() {
       ctx.textAlign = "left";
       ctx.fillStyle = "rgba(0,0,0,0.42)";
-      ctx.fillRect(12, 12, 160, 52);
+      ctx.fillRect(12, 12, 160, 70);
       bar(22, 20, 120, 9, player.hp / 100, "#9d2520", "#341410");
       bar(22, 38, 120, 8, skillEnergy, "#c47cf0", "#2a1040");
       ctx.fillStyle = "#eee5d2";
@@ -3942,6 +4058,10 @@
       ctx.font = "700 11px Arial";
       ctx.fillStyle = bombCooldown > 0 ? "#9aa1aa" : "#f4d89a";
       ctx.fillText("Q Bomb", 22, 58);
+      const wColors = ["#ffd776", "#ff9944", "#88ccff"];
+      const wNames = ["[Tab] 소총", "[Tab] 산탄총", "[Tab] 마취총"];
+      ctx.fillStyle = wColors[currentWeapon];
+      ctx.fillText(wNames[currentWeapon], 22, 74);
       drawGameMenuButton();
       drawSpecialForcesToggle();
       drawCameraButtons();
@@ -4075,11 +4195,13 @@
       const attackR = Math.min(58, Math.max(52, width * 0.105));
       const attackY = height - 112;
       const actionX = width - safeRight - base;
+      const weaponNames = ["소총", "산탄총", "마취총"];
       return {
         stick: { x: 88, y: height - 112, r: 58 },
         attack: { x: width - 88, y: attackY, r: attackR },
         bomb: { id: "bomb", label: "BOMB", x: actionX, y: attackY - attackR - gap - base, w: base, h: base },
-        dodge: { id: "dodge", label: "DASH", x: actionX, y: attackY - attackR - gap * 2 - base * 2, w: base, h: base }
+        dodge: { id: "dodge", label: "DASH", x: actionX, y: attackY - attackR - gap * 2 - base * 2, w: base, h: base },
+        swap: { id: "swap", label: weaponNames[currentWeapon], x: actionX - base - gap, y: attackY - attackR - gap - base, w: base, h: base }
       };
     }
 
@@ -4117,6 +4239,7 @@
       ctx.fillText("AIM", rects.attack.x, rects.attack.y - rects.attack.r - 12);
       drawMobileButton(rects.bomb, bombCooldown <= 0);
       drawMobileButton(rects.dodge, player.stamina > 25);
+      drawMobileButton(rects.swap, true);
       ctx.restore();
     }
 
@@ -4214,6 +4337,8 @@
           mobileControls.bomb = true;
         } else if (action === "dodge") {
           mobileControls.dodge = true;
+        } else if (action === "swap") {
+          mobileControls.swap = true;
         } else if (p.x < width * 0.46 && mobileControls.moveId === null) {
           mobileControls.moveId = touch.identifier;
           updateMobileStick(p.x, p.y);
@@ -4315,7 +4440,7 @@
 
     function mobileActionAt(x, y) {
       const rects = mobileButtonRects();
-      for (const key of ["bomb", "dodge"]) {
+      for (const key of ["bomb", "dodge", "swap"]) {
         const rect = rects[key];
         if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) return key;
       }

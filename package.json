@@ -1,12 +1,12 @@
 {
-  "name": "bullet-noir-tests",
+  "name": "new-chat",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "jest",
     "test:e2e": "playwright test",
-    "serve": "serve ../game -p 3000 --no-clipboard"
+    "serve": "serve . -p 3000 --no-clipboard"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",

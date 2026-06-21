@@ -14,6 +14,7 @@ const ui = {
 
 const keys = new Set();
 const mouse = { x: 0, y: 0, down: false, active: false };
+const joystick = { active: false, id: null, baseX: 0, baseY: 0, stickX: 0, stickY: 0, dx: 0, dy: 0 };
 
 const game = {
   running: false,
@@ -251,9 +252,11 @@ function updatePlayer(agent, dt) {
   if (keys.has("s") || keys.has("arrowdown")) my += 1;
   if (keys.has("a") || keys.has("arrowleft")) mx -= 1;
   if (keys.has("d") || keys.has("arrowright")) mx += 1;
-  const len = Math.hypot(mx, my) || 1;
-  agent.vx = (mx / len) * 255;
-  agent.vy = (my / len) * 255;
+  mx += joystick.dx;
+  my += joystick.dy;
+  const len = Math.hypot(mx, my);
+  agent.vx = len > 0.01 ? (mx / len) * 255 : 0;
+  agent.vy = len > 0.01 ? (my / len) * 255 : 0;
   moveAgent(agent, agent.vx * dt, agent.vy * dt);
   if (mouse.active) agent.angle = angleTo(agent, mouse);
 
@@ -412,6 +415,7 @@ function render() {
   drawFog();
   drawMinimap();
   ctx.restore();
+  drawJoystick();
 }
 
 function drawArena() {
@@ -755,6 +759,17 @@ function line(x1, y1, x2, y2) {
   ctx.stroke();
 }
 
+function drawJoystick() {
+  if (!joystick.active) return;
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  ctx.fillStyle = "#eff2ea";
+  circle(joystick.baseX, joystick.baseY, 55);
+  ctx.globalAlpha = 0.5;
+  circle(joystick.stickX, joystick.stickY, 26);
+  ctx.restore();
+}
+
 function hexAlpha(hex, alpha) {
   const value = hex.replace("#", "");
   const r = parseInt(value.slice(0, 2), 16);
@@ -769,20 +784,72 @@ window.addEventListener("keydown", (event) => {
   if (event.key === " " || event.key === "Shift") event.preventDefault();
 });
 window.addEventListener("keyup", (event) => keys.delete(event.key.toLowerCase()));
-canvas.addEventListener("pointermove", (event) => {
+canvas.addEventListener("pointermove", (e) => {
   const rect = canvas.getBoundingClientRect();
-  mouse.x = event.clientX - rect.left;
-  mouse.y = event.clientY - rect.top;
-  mouse.active = true;
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  if (e.pointerId === joystick.id) {
+    const dx = x - joystick.baseX;
+    const dy = y - joystick.baseY;
+    const d = Math.hypot(dx, dy);
+    const r = 55;
+    joystick.dx = dx / Math.max(d, r);
+    joystick.dy = dy / Math.max(d, r);
+    joystick.stickX = joystick.baseX + Math.min(d, r) * (dx / (d || 1));
+    joystick.stickY = joystick.baseY + Math.min(d, r) * (dy / (d || 1));
+  } else {
+    mouse.x = x;
+    mouse.y = y;
+    mouse.active = true;
+  }
 });
-canvas.addEventListener("pointerdown", () => {
-  mouse.down = true;
-  if (!game.running) start();
+canvas.addEventListener("pointerdown", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  if (!game.running) { start(); return; }
+  if (e.pointerType !== "mouse" && x < width / 2 && !joystick.active) {
+    joystick.active = true;
+    joystick.id = e.pointerId;
+    joystick.baseX = x;
+    joystick.baseY = y;
+    joystick.stickX = x;
+    joystick.stickY = y;
+    joystick.dx = 0;
+    joystick.dy = 0;
+    canvas.setPointerCapture(e.pointerId);
+  } else {
+    mouse.x = x;
+    mouse.y = y;
+    mouse.active = true;
+    mouse.down = true;
+  }
 });
-canvas.addEventListener("pointerup", () => {
-  mouse.down = false;
+canvas.addEventListener("pointerup", (e) => {
+  if (e.pointerId === joystick.id) {
+    joystick.active = false;
+    joystick.id = null;
+    joystick.dx = 0;
+    joystick.dy = 0;
+  } else {
+    mouse.down = false;
+  }
+});
+canvas.addEventListener("pointercancel", (e) => {
+  if (e.pointerId === joystick.id) {
+    joystick.active = false;
+    joystick.id = null;
+    joystick.dx = 0;
+    joystick.dy = 0;
+  } else {
+    mouse.down = false;
+  }
 });
 ui.start.addEventListener("click", start);
+document.querySelector("#reload-btn")?.addEventListener("pointerdown", (e) => {
+  e.stopPropagation();
+  if (game.running) reload(player);
+});
 
 if (!ctx.roundRect) {
   CanvasRenderingContext2D.prototype.roundRect = function roundRect(x, y, w, h, r) {

@@ -174,7 +174,7 @@ describe("angleTo()", () => {
     expect(angleTo({ x: 0, y: 0 }, { x: 0, y: 1 })).toBeCloseTo(Math.PI / 2);
   });
 
-  test("left is +-PI", () => {
+  test("left is ±PI", () => {
     expect(Math.abs(angleTo({ x: 0, y: 0 }, { x: -1, y: 0 }))).toBeCloseTo(Math.PI);
   });
 
@@ -192,7 +192,7 @@ describe("angleDelta()", () => {
     expect(angleDelta(0, Math.PI / 2)).toBeCloseTo(Math.PI / 2);
   });
 
-  test("wraps: 270deg CW equals 90deg CCW", () => {
+  test("wraps: 270° CW equals 90° CCW", () => {
     expect(angleDelta(0, Math.PI * 1.5)).toBeCloseTo(-Math.PI / 2);
   });
 

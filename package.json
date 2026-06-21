@@ -1,0 +1,16 @@
+{
+  "name": "bullet-noir-tests",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "jest",
+    "test:e2e": "playwright test",
+    "serve": "serve ../game -p 3000 --no-clipboard"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "jest": "^29.7.0",
+    "serve": "^14.2.3"
+  }
+}

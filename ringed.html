@@ -2140,8 +2140,8 @@
     }
 
     function initMobileAimCursor() {
-      mobileControls.aimScreenX = clamp(width * 0.62, 18, width - 18);
-      mobileControls.aimScreenY = clamp(height * 0.46, 18, height - 18);
+      mobileControls.aimScreenX = clamp(screenX(player.x), 18, width - 18);
+      mobileControls.aimScreenY = clamp(screenY(player.y), 18, height - 18);
       syncMobileAimWorld();
     }
 

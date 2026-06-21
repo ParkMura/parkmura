@@ -54,6 +54,10 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 23 | 과녁 월드좌표계 렌더링 | `drawMobileAimCursorWorld()` - 캐릭터와 동일 카메라 변환, 벌어짐 방지 |
 | 24 | 플레이어 → 스타크래프트 마린 | `drawMarineSoldier()` - 올리브 파워슈트, 앰버 T바이저 |
 | 25 | 적 → 스타워즈 스톰트루퍼 | `drawStormtrooper()` - 흰색 갑옷, 검은 T바이저, 임페리얼 블라스터 |
+| 26 | 2인 협동 멀티플레이어 | PeerJS WebRTC P2P, 메뉴에 "2P CO-OP" 버튼, 로비 화면(HOST/JOIN) |
+| 27 | HOST(1P) 기능 | 4자리 코드 생성, 전체 게임 로직 실행, player2 이동/사격, 50ms 상태 전송 |
+| 28 | JOIN(2P) 기능 | 코드 입력 패드, PeerJS 연결, 입력 전송, 수신 상태로 렌더링 |
+| 29 | 원격 플레이어 렌더링 | `drawRemotePlayer()` - 파란 마린(2P), 보라 마린(1P), HP바, 레이블 |
 
 ## 미구현 (요청됨)
 - 브롤스타즈식 사선 시야

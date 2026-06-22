@@ -3988,205 +3988,340 @@
     }
 
     function drawMarineSoldier(r, walkTime, isWalking, colors, isSkill, isGatling, shootFlash) {
-      // 스타크래프트 마린 (CMC 파워 슈트) — 탑다운 뷰
+      // Warhammer 40K Space Marine (Ultramarines) — 탑다운 뷰
       const wt = walkTime || 0;
-      const freq = 9;
+      const freq = 8;
       const sf = shootFlash || 0;
-      const swing  = isWalking ? Math.sin(wt * freq) : 0;
-      const bob    = isWalking ? Math.abs(Math.sin(wt * freq)) : 0;
-      const sway   = isWalking ? Math.sin(wt * freq * 2) : 0;
+      const swing = isWalking ? Math.sin(wt * freq) : 0;
+      const bob   = isWalking ? Math.abs(Math.sin(wt * freq)) : 0;
+      const sway  = isWalking ? Math.sin(wt * freq * 2) : 0;
 
-      // 스킬 활성 시 몸 전체 오렌지 발광
+      // 스킬 발동 — 오렌지 파워 글로우
       if (isSkill) {
         ctx.save();
-        ctx.globalAlpha = 0.38 + Math.sin(performance.now() * 0.018) * 0.15;
-        const sg = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 1.4);
-        sg.addColorStop(0, "rgba(255,140,0,0.85)");
-        sg.addColorStop(1, "rgba(255,60,0,0)");
+        ctx.globalAlpha = 0.44 + Math.sin(performance.now() * 0.018) * 0.15;
+        const sg = ctx.createRadialGradient(0, 0, r * 0.12, 0, 0, r * 1.7);
+        sg.addColorStop(0, "rgba(255,150,40,0.9)");
+        sg.addColorStop(0.45, "rgba(255,50,0,0.55)");
+        sg.addColorStop(1, "rgba(255,10,0,0)");
         ctx.fillStyle = sg;
-        ctx.beginPath(); ctx.arc(0, 0, r * 1.4, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, r * 1.7, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
       }
 
-      // 개틀링 모드 시 파란 준비 발광
+      // 개틀링 대기 — 파란 에너지 링
       if (isGatling && !isSkill) {
         ctx.save();
-        ctx.globalAlpha = 0.28 + Math.sin(performance.now() * 0.022) * 0.1;
+        ctx.globalAlpha = 0.30 + Math.sin(performance.now() * 0.022) * 0.12;
         ctx.strokeStyle = "#60d0ff";
-        ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.arc(0, 0, r * 1.08, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(0, 0, r * 1.15, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
       }
 
-      // 그림자
+      // 지면 그림자
       ctx.save();
-      ctx.globalAlpha = 0.32;
+      ctx.globalAlpha = 0.36;
       ctx.fillStyle = "#000";
       ctx.beginPath();
-      ctx.ellipse(-r * 0.14, r * 0.12, r * (0.84 + bob * 0.07), r * (0.5 + bob * 0.04), 0.1, 0, Math.PI * 2);
+      ctx.ellipse(-r * 0.08, r * 0.1 + bob * r * 0.06,
+                  r * (0.92 + bob * 0.04), r * (0.58 + bob * 0.03), 0.06, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
-      ctx.translate(0, sway * 0.9);
-      const sc = 0.82;
-      ctx.scale(sc, sc);
+      ctx.translate(0, sway * 0.8);
+      ctx.scale(0.87, 0.87);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
 
-      const armorDark  = (colors && colors.dark)  || "#2b3320";
-      const armorMid   = (colors && colors.mid)   || "#3e4f2a";
-      const armorLight = (colors && colors.light) || "#5a7038";
-      const black      = "rgba(0,0,0,0.88)";
-      const visorAmber = (colors && colors.visor) || "rgba(245,165,35,0.94)";
+      // ── 색상 팔레트 (Ultramarines 딥 코발트) ──────────────
+      const aDeep  = (colors && colors.dark)   || "#0c1e50";
+      const aMid   = (colors && colors.mid)    || "#18388a";
+      const aLight = (colors && colors.light)  || "#2a56c0";
+      const aHigh  = "#4878e8";
+      const gDark  = "#7a5008";
+      const gMid   = "#c89010";
+      const gLight = "#f0d030";
+      const redAcc = (colors && colors.red)    || "#c81a14";
+      const black  = "rgba(0,0,0,0.92)";
+      const recoilPull = sf * 0.22;
 
-      // 발사 반동: 팔이 뒤로 당겨짐
-      const recoilPull = sf * 0.18;
-
-      // 뒤쪽 팔 — 걷기 스윙 + 개틀링 시 넓게 벌림
-      const gSpread = isGatling ? 0.18 : 0;
-      ctx.strokeStyle = armorDark;
-      ctx.lineWidth = r * 0.24;
+      // ── 배낭 (power plant backpack) ──────────────────────
+      ctx.fillStyle = aDeep;
+      ctx.strokeStyle = black;
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.moveTo(-r * 0.3, -r * 0.22);
-      ctx.lineTo(-r * (0.82 - swing * 0.3 + recoilPull), -r * (0.52 + gSpread));
-      ctx.moveTo(-r * 0.3,  r * 0.22);
-      ctx.lineTo(-r * (0.82 + swing * 0.3 + recoilPull),  r * (0.52 + gSpread));
+      ctx.ellipse(-r * 0.53, 0, r * 0.27, r * 0.32, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = gDark; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.ellipse(-r * 0.53, 0, r * 0.25, r * 0.30, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // 배기 파이프 3개
+      ctx.strokeStyle = "#252e3a"; ctx.lineWidth = r * 0.065;
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.63, i * r * 0.11);
+        ctx.lineTo(-r * 0.80, i * r * 0.14);
+        ctx.stroke();
+      }
+      // 배기구 청색 발광
+      ctx.fillStyle = "rgba(0,160,255,0.22)";
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath(); ctx.arc(-r * 0.80, i * r * 0.14, r * 0.052, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // ── 뒤쪽 팔 ─────────────────────────────────────────
+      const gSpread = isGatling ? 0.20 : 0;
+      ctx.strokeStyle = aMid; ctx.lineWidth = r * 0.27;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.28, -r * 0.25);
+      ctx.lineTo(-r * (0.74 - swing * 0.26 + recoilPull), -r * (0.52 + gSpread));
+      ctx.moveTo(-r * 0.28,  r * 0.25);
+      ctx.lineTo(-r * (0.74 + swing * 0.26 + recoilPull),  r * (0.52 + gSpread));
+      ctx.stroke();
+      ctx.strokeStyle = aLight; ctx.lineWidth = r * 0.13;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.26, -r * 0.22);
+      ctx.lineTo(-r * (0.68 - swing * 0.26 + recoilPull), -r * (0.46 + gSpread));
+      ctx.moveTo(-r * 0.26,  r * 0.22);
+      ctx.lineTo(-r * (0.68 + swing * 0.26 + recoilPull),  r * (0.46 + gSpread));
+      ctx.stroke();
+      // 팔꿈치 금장 (elbow guards)
+      for (const [ay, ang] of [[-1, -0.22], [1, 0.22]]) {
+        const ex = -r * (0.57 + swing * ay * 0.13 + recoilPull);
+        const ey = ay * r * (0.42 + gSpread * 0.5);
+        ctx.fillStyle = gMid; ctx.strokeStyle = gDark; ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, r * 0.10, r * 0.07, ang, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+      }
+
+      // ── 앞쪽 팔 ─────────────────────────────────────────
+      ctx.strokeStyle = aMid; ctx.lineWidth = r * 0.26;
+      ctx.beginPath();
+      ctx.moveTo(r * 0.06, -r * 0.28);
+      ctx.lineTo(r * (0.50 + swing * 0.12 - recoilPull), -r * 0.45);
+      ctx.moveTo(r * 0.06,  r * 0.26);
+      ctx.lineTo(r * (0.50 - swing * 0.12 - recoilPull),  r * 0.43);
+      ctx.stroke();
+      ctx.strokeStyle = aLight; ctx.lineWidth = r * 0.12;
+      ctx.beginPath();
+      ctx.moveTo(r * 0.07, -r * 0.25);
+      ctx.lineTo(r * (0.46 + swing * 0.12 - recoilPull), -r * 0.41);
+      ctx.moveTo(r * 0.07,  r * 0.23);
+      ctx.lineTo(r * (0.46 - swing * 0.12 - recoilPull),  r * 0.39);
       ctx.stroke();
 
-      // 앞쪽 팔 — 반대 위상 스윙
-      ctx.strokeStyle = armorMid;
-      ctx.lineWidth = r * 0.21;
+      // ── 몸통 (bulky power armour torso) ──────────────────
+      const bodyG = ctx.createRadialGradient(-r*0.14, -r*0.1, r*0.06, -r*0.04, 0, r*0.64);
+      bodyG.addColorStop(0, aLight);
+      bodyG.addColorStop(0.44, aMid);
+      bodyG.addColorStop(1, aDeep);
+      ctx.fillStyle = bodyG;
+      ctx.strokeStyle = black; ctx.lineWidth = 1.9;
       ctx.beginPath();
-      ctx.moveTo(r * 0.04, -r * 0.26);
-      ctx.lineTo(r * (0.5 + swing * 0.14 - recoilPull), -r * 0.42);
-      ctx.moveTo(r * 0.04,  r * 0.24);
-      ctx.lineTo(r * (0.5 - swing * 0.14 - recoilPull),  r * 0.4);
-      ctx.stroke();
-
-      // 몸통
-      ctx.fillStyle = armorMid;
-      ctx.strokeStyle = black;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.ellipse(-r * 0.05, 0, r * 0.52, r * 0.46, 0, 0, Math.PI * 2);
+      ctx.ellipse(-r * 0.04, 0, r * 0.56, r * 0.51, 0, 0, Math.PI * 2);
       ctx.fill(); ctx.stroke();
-
-      // 가슴 플레이트
-      ctx.fillStyle = armorLight;
-      ctx.lineWidth = 0.7;
-      ctx.beginPath();
-      ctx.ellipse(r * 0.02, 0, r * 0.3, r * 0.28, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 어깨 패드
-      ctx.fillStyle = armorLight;
-      ctx.strokeStyle = black;
-      ctx.lineWidth = 1.1;
-      ctx.beginPath();
-      ctx.ellipse(-r * 0.07, -r * 0.43, r * 0.23, r * 0.15, -0.28, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
-      ctx.beginPath();
-      ctx.ellipse(-r * 0.07,  r * 0.43, r * 0.23, r * 0.15,  0.28, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
-
-      // 무기 (개틀링/스킬 모드: 배럴 회전)
+      // 몸통 하이라이트 엣지
       ctx.save();
-      ctx.translate(r * 0.42, 0);
+      ctx.globalAlpha = 0.38;
+      ctx.strokeStyle = aHigh; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.arc(-r*0.04, 0, r*0.50, Math.PI*1.06, Math.PI*1.64);
+      ctx.stroke();
+      ctx.restore();
+
+      // ── 어깨 패드 (HUGE Warhammer pauldrons) ─────────────
+      const pW = r * 0.33, pH = r * 0.22;
+      for (const [side, tilt] of [[-1, -0.22], [1, 0.22]]) {
+        const pcx = -r * 0.06, pcy = side * r * 0.57;
+        const pg = ctx.createLinearGradient(pcx - pW, pcy, pcx + pW, pcy);
+        pg.addColorStop(0, aDeep);
+        pg.addColorStop(0.35, aMid);
+        pg.addColorStop(0.8, aLight);
+        ctx.fillStyle = pg;
+        ctx.strokeStyle = black; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(pcx, pcy, pW, pH, tilt, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+        // 금장 테두리
+        ctx.strokeStyle = gMid; ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.ellipse(pcx, pcy, pW - 1, pH - 1, tilt, 0, Math.PI * 2);
+        ctx.stroke();
+        // 하이라이트
+        ctx.save();
+        ctx.globalAlpha = 0.42;
+        ctx.strokeStyle = gLight; ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        ctx.ellipse(pcx - r*0.06, pcy - side*r*0.04, pW*0.6, pH*0.5, tilt, 0, Math.PI*2);
+        ctx.stroke();
+        ctx.restore();
+        // 챕터 U 마크
+        ctx.save();
+        ctx.globalAlpha = 0.68;
+        ctx.fillStyle = gMid;
+        ctx.font = `bold ${Math.round(r * 0.13)}px serif`;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText("U", pcx, pcy + side * r * 0.01);
+        ctx.restore();
+      }
+
+      // ── 가슴 플레이트 ────────────────────────────────────
+      const cpG = ctx.createLinearGradient(r*0.0, -r*0.22, r*0.28, r*0.22);
+      cpG.addColorStop(0, aLight); cpG.addColorStop(1, aMid);
+      ctx.fillStyle = cpG;
+      ctx.strokeStyle = black; ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.ellipse(r * 0.04, 0, r * 0.29, r * 0.27, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+
+      // 가슴 중앙 세로 금선
+      ctx.strokeStyle = gMid; ctx.lineWidth = 0.75;
+      ctx.beginPath();
+      ctx.moveTo(r * 0.04, -r * 0.22); ctx.lineTo(r * 0.04, r * 0.22);
+      ctx.stroke();
+
+      // ── 해골 엠블렘 (skull emblem on chest) ──────────────
+      const skx = r * 0.08, sky = -r * 0.02;
+      ctx.fillStyle = "#d0c4a4"; ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 0.55;
+      ctx.beginPath(); ctx.ellipse(skx, sky, r*0.105, r*0.095, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#b8ab8a";
+      ctx.beginPath(); ctx.ellipse(skx, sky + r*0.075, r*0.072, r*0.050, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = aDeep;
+      ctx.beginPath(); ctx.ellipse(skx - r*0.04, sky - r*0.02, r*0.028, r*0.024, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(skx + r*0.04, sky - r*0.02, r*0.028, r*0.024, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#8a7a60";
+      ctx.beginPath();
+      ctx.moveTo(skx - r*0.02, sky + r*0.020); ctx.lineTo(skx, sky + r*0.038);
+      ctx.lineTo(skx + r*0.02, sky + r*0.020); ctx.closePath(); ctx.fill();
+
+      // ── 체인 장식 3줄 ────────────────────────────────────
+      ctx.setLineDash([r * 0.045, r * 0.042]);
+      ctx.strokeStyle = "#686878"; ctx.lineWidth = 1.1;
+      for (let ci = 0; ci < 3; ci++) {
+        const cy = -r * 0.14 + ci * r * 0.14;
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.25, cy); ctx.lineTo(r * 0.18, cy);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      // 퓨리티 씰 (purity seal — wax + ribbon)
+      ctx.fillStyle = "#c8b060";
+      ctx.fillRect(-r * 0.11, r * 0.17, r * 0.055, r * 0.16);
+      ctx.fillStyle = redAcc;
+      ctx.beginPath(); ctx.arc(-r*0.082, r*0.17, r*0.042, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.14)";
+      ctx.beginPath(); ctx.arc(-r*0.07, r*0.15, r*0.02, 0, Math.PI*2); ctx.fill();
+
+      // ── 무기 (개틀링/스킬: 배럴 회전 / 기본: 볼터) ──────
+      ctx.save();
+      ctx.translate(r * 0.44, 0);
       if (isGatling || isSkill) {
-        // 개틀링 배럴 (6개 회전)
         const barrelAngle = performance.now() * (isSkill ? 0.022 : 0.010);
-        const barrelCount = 6;
-        const barrelLen = r * 0.42;
-        const barrelR = r * 0.07;
+        const barrelCount = 6, barrelLen = r * 0.45, barrelRad = r * 0.072;
         ctx.save();
         ctx.translate(r * 0.1, 0);
         for (let b = 0; b < barrelCount; b++) {
           const ba = barrelAngle + (b / barrelCount) * Math.PI * 2;
-          ctx.save();
-          ctx.rotate(ba);
-          ctx.fillStyle = isSkill ? "#c06020" : "#707870";
-          ctx.strokeStyle = black;
-          ctx.lineWidth = 0.5;
+          ctx.save(); ctx.rotate(ba);
+          ctx.fillStyle = isSkill ? "#c06020" : "#505860";
+          ctx.strokeStyle = black; ctx.lineWidth = 0.5;
           ctx.beginPath();
-          ctx.ellipse(barrelLen * 0.5, barrelR * 1.1, barrelLen * 0.5, barrelR, 0, 0, Math.PI * 2);
+          ctx.ellipse(barrelLen*0.5, barrelRad*1.1, barrelLen*0.5, barrelRad, 0, 0, Math.PI*2);
           ctx.fill(); ctx.stroke();
           ctx.restore();
         }
-        // 배럴 허브
-        ctx.fillStyle = isSkill ? "#ff8030" : "#404840";
-        ctx.beginPath(); ctx.arc(0, 0, barrelR * 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = isSkill ? "#ff8030" : "#404848";
+        ctx.beginPath(); ctx.arc(0, 0, barrelRad*1.8, 0, Math.PI*2); ctx.fill();
         ctx.restore();
-        // 발사 시 배럴 끝 불꽃
         if (sf > 0.3) {
-          ctx.save();
-          ctx.globalAlpha = sf * 0.9;
-          const fg = ctx.createRadialGradient(r * 0.62, 0, 0, r * 0.62, 0, r * 0.38);
-          fg.addColorStop(0, "#ffffff");
-          fg.addColorStop(0.3, "#ffdd60");
-          fg.addColorStop(1, "rgba(255,80,0,0)");
+          ctx.save(); ctx.globalAlpha = sf * 0.9;
+          const fg = ctx.createRadialGradient(r*0.65, 0, 0, r*0.65, 0, r*0.42);
+          fg.addColorStop(0, "#ffffff"); fg.addColorStop(0.3, "#ffdd60"); fg.addColorStop(1, "rgba(255,80,0,0)");
           ctx.fillStyle = fg;
-          ctx.beginPath(); ctx.arc(r * 0.62, 0, r * 0.38, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(r*0.65, 0, r*0.42, 0, Math.PI*2); ctx.fill();
           ctx.restore();
         }
       } else {
         drawWeapon(true, "shooter");
-        // 발사 시 총구 발광
         if (sf > 0.3) {
-          ctx.save();
-          ctx.globalAlpha = sf * 0.8;
-          const fg = ctx.createRadialGradient(r * 0.48, 0, 0, r * 0.48, 0, r * 0.28);
-          fg.addColorStop(0, "#ffffff");
-          fg.addColorStop(0.4, "#ffe070");
-          fg.addColorStop(1, "rgba(255,180,0,0)");
+          ctx.save(); ctx.globalAlpha = sf * 0.82;
+          const fg = ctx.createRadialGradient(r*0.5, 0, 0, r*0.5, 0, r*0.32);
+          fg.addColorStop(0, "#ffffff"); fg.addColorStop(0.3, "#ffe060"); fg.addColorStop(1, "rgba(255,200,0,0)");
           ctx.fillStyle = fg;
-          ctx.beginPath(); ctx.arc(r * 0.48, 0, r * 0.28, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(r*0.5, 0, r*0.32, 0, Math.PI*2); ctx.fill();
           ctx.restore();
         }
       }
       ctx.restore();
 
-      // 헬멧
-      const hx = r * 0.38, hr = r * 0.38;
-      ctx.fillStyle = armorMid;
-      ctx.strokeStyle = black;
-      ctx.lineWidth = 1.6;
+      // ── 헬멧 ─────────────────────────────────────────────
+      const hx = r * 0.40, hr = r * 0.40;
+      const helmG = ctx.createRadialGradient(hx - r*0.1, -r*0.1, r*0.04, hx, 0, hr);
+      helmG.addColorStop(0, aLight); helmG.addColorStop(0.52, aMid); helmG.addColorStop(1, aDeep);
+      ctx.fillStyle = helmG;
+      ctx.strokeStyle = black; ctx.lineWidth = 1.9;
+      ctx.beginPath(); ctx.arc(hx, 0, hr, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+      // 헬멧 금장 크라운 링
+      ctx.strokeStyle = gMid; ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.arc(hx, 0, hr - 1, Math.PI*0.72, Math.PI*1.84); ctx.stroke();
+
+      // ── 바이저 슬릿 (Space Marine 수평 레드 슬릿) ────────
+      const visorCol = isSkill ? "rgba(255,80,20,0.97)"
+                               : ((colors && colors.visor) || "rgba(200,22,14,0.94)");
+      // 어두운 배경
+      ctx.fillStyle = "rgba(4,4,8,0.82)";
       ctx.beginPath();
-      ctx.arc(hx, 0, hr, 0, Math.PI * 2);
+      ctx.moveTo(hx - hr*0.40, -hr*0.20);
+      ctx.lineTo(hx + hr*0.56,  -hr*0.20);
+      ctx.lineTo(hx + hr*0.56,   hr*0.20);
+      ctx.lineTo(hx - hr*0.40,   hr*0.20);
+      ctx.closePath(); ctx.fill();
+      // 발광 슬릿
+      ctx.fillStyle = visorCol;
+      ctx.beginPath();
+      ctx.moveTo(hx - hr*0.38, -hr*0.13);
+      ctx.lineTo(hx + hr*0.54,  -hr*0.13);
+      ctx.lineTo(hx + hr*0.54,   hr*0.13);
+      ctx.lineTo(hx - hr*0.38,   hr*0.13);
+      ctx.closePath(); ctx.fill();
+      // 바이저 글로우
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = isSkill ? 0.52 : 0.26;
+      const vg = ctx.createRadialGradient(hx + hr*0.14, 0, 0, hx + hr*0.14, 0, hr*0.48);
+      vg.addColorStop(0, isSkill ? "rgba(255,100,20,1)" : "rgba(220,28,12,1)");
+      vg.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = vg;
+      ctx.beginPath(); ctx.arc(hx + hr*0.14, 0, hr*0.48, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+
+      // 귀 보호대 (cheek guard vents)
+      ctx.fillStyle = aDeep; ctx.strokeStyle = black; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.ellipse(hx - hr*0.80, -hr*0.36, r*0.12, r*0.09, -0.30, 0, Math.PI*2);
       ctx.fill(); ctx.stroke();
-
-      // 헬멧 위 밝은 패널
-      ctx.fillStyle = armorLight;
       ctx.beginPath();
-      ctx.arc(hx - r * 0.04, -r * 0.04, hr * 0.66, 0, Math.PI * 2);
-      ctx.fill();
-
-      // T자 바이저 (스킬 활성 시 빨간색으로 변함)
-      const visorColor = isSkill ? "rgba(255,80,30,0.96)" : visorAmber;
-      ctx.fillStyle = visorColor;
-      ctx.strokeStyle = "rgba(180,90,10,0.45)";
-      ctx.lineWidth = 0.9;
-      ctx.beginPath();
-      ctx.moveTo(hx, -hr * 0.3);
-      ctx.arc(hx, 0, hr * 0.8, -Math.PI * 0.32, Math.PI * 0.32);
-      ctx.lineTo(hx, hr * 0.3);
-      ctx.closePath();
+      ctx.ellipse(hx - hr*0.80,  hr*0.36, r*0.12, r*0.09,  0.30, 0, Math.PI*2);
       ctx.fill(); ctx.stroke();
+      // 환기구 구멍
+      ctx.fillStyle = "#1a1e28";
+      for (const sy of [-1, 1]) {
+        ctx.beginPath(); ctx.arc(hx - hr*0.88, sy*hr*0.38, r*0.048, 0, Math.PI*2); ctx.fill();
+      }
 
-      // 바이저 발광 (스킬 시 강하게)
-      ctx.fillStyle = isSkill ? "rgba(255,120,50,0.45)" : "rgba(255,210,60,0.22)";
+      // 헬멧 크레스트 금장
+      ctx.save();
+      ctx.globalAlpha = 0.65;
+      ctx.strokeStyle = gMid; ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(hx + r * 0.1, 0, hr * 0.46, -Math.PI * 0.28, Math.PI * 0.28);
-      ctx.lineTo(hx, 0);
-      ctx.closePath();
-      ctx.fill();
-
-      // 헬멧 배기구
-      ctx.fillStyle = armorDark;
-      ctx.strokeStyle = black;
-      ctx.lineWidth = 0.8;
-      ctx.beginPath();
-      ctx.ellipse(hx - hr * 0.92, 0, r * 0.09, r * 0.19, 0, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
+      ctx.arc(hx - r*0.04, 0, hr*0.88, -Math.PI*0.54, -Math.PI*0.12);
+      ctx.stroke();
+      ctx.restore();
     }
 
     function drawStormtrooper(r, hasGun = true, weaponKind = "shooter") {
@@ -4431,67 +4566,101 @@
     }
 
     function drawShotgun() {
-      ctx.fillStyle = "rgba(255, 200, 50, 0.96)";
-      ctx.strokeStyle = "rgba(0,0,0,0.72)";
-      ctx.lineWidth = 1.4;
-      ctx.fillRect(-5, -6, 24, 12);
-      ctx.strokeRect(-5, -6, 24, 12);
-      ctx.fillRect(19, -5, 6, 10);
-      ctx.strokeRect(19, -5, 6, 10);
-      ctx.fillRect(24, -8, 9, 16);
-      ctx.strokeRect(24, -8, 9, 16);
-      ctx.beginPath();
-      ctx.moveTo(5, 6);
-      ctx.lineTo(10, 16);
-      ctx.lineTo(16, 16);
-      ctx.lineTo(12, 6);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      // Storm Bolter (더블 배럴 볼터)
+      ctx.strokeStyle = "rgba(0,0,0,0.80)"; ctx.lineWidth = 1.4;
+      // 메인 바디
+      ctx.fillStyle = "#1a2e7a";
+      ctx.fillRect(-3, -8, 22, 16); ctx.strokeRect(-3, -8, 22, 16);
+      // 더블 배럴 하우징
+      ctx.fillStyle = "#0c1848";
+      ctx.fillRect(19, -8, 13, 7); ctx.strokeRect(19, -8, 13, 7);
+      ctx.fillRect(19, 1, 13, 7); ctx.strokeRect(19, 1, 13, 7);
+      // 두 총구
+      ctx.fillStyle = "#060810";
+      ctx.fillRect(30, -7, 5, 5); ctx.strokeRect(30, -7, 5, 5);
+      ctx.fillRect(30, 2, 5, 5); ctx.strokeRect(30, 2, 5, 5);
+      // 탄창
+      ctx.fillStyle = "#0c1848";
+      ctx.fillRect(2, 8, 15, 9); ctx.strokeRect(2, 8, 15, 9);
+      // 손잡이
+      ctx.fillStyle = "#070b24";
+      ctx.strokeStyle = "rgba(0,0,0,0.80)";
+      ctx.fillRect(5, 8, 8, 13); ctx.strokeRect(5, 8, 8, 13);
+      // 주황 금장 테두리 (산탄총)
+      ctx.strokeStyle = "#d07818"; ctx.lineWidth = 1.0;
+      ctx.strokeRect(-2, -7, 20, 14);
+      // 중앙 분리선
+      ctx.strokeStyle = "rgba(40,80,200,0.4)"; ctx.lineWidth = 0.7;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(21, 0); ctx.stroke();
     }
 
     function drawTaserGun() {
-      ctx.fillStyle = "rgba(120, 200, 255, 0.96)";
-      ctx.strokeStyle = "rgba(0,0,0,0.72)";
-      ctx.lineWidth = 1.4;
-      ctx.fillRect(-4, -3, 22, 6);
-      ctx.strokeRect(-4, -3, 22, 6);
-      ctx.fillRect(18, -2, 20, 4);
-      ctx.strokeRect(18, -2, 20, 4);
-      ctx.beginPath();
-      ctx.moveTo(5, 3);
-      ctx.lineTo(9, 11);
-      ctx.lineTo(15, 11);
-      ctx.lineTo(11, 3);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(88,200,255,0.9)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(37, 0);
-      ctx.lineTo(44, -3);
-      ctx.moveTo(37, 0);
-      ctx.lineTo(44, 3);
-      ctx.stroke();
+      // Plasma Pistol (플라즈마 피스톨 — 마취총)
+      ctx.strokeStyle = "rgba(0,0,0,0.80)"; ctx.lineWidth = 1.4;
+      // 본체
+      ctx.fillStyle = "#162464";
+      ctx.fillRect(-3, -5, 19, 10); ctx.strokeRect(-3, -5, 19, 10);
+      // 플라즈마 코일 하우징 (원형)
+      ctx.fillStyle = "#0a1038";
+      ctx.beginPath(); ctx.ellipse(21, 0, 8, 8, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      // 플라즈마 글로우
+      const pg = ctx.createRadialGradient(21, 0, 0, 21, 0, 7);
+      pg.addColorStop(0, "rgba(100,220,255,0.9)");
+      pg.addColorStop(0.5, "rgba(40,140,255,0.65)");
+      pg.addColorStop(1, "rgba(0,60,200,0)");
+      ctx.fillStyle = pg;
+      ctx.beginPath(); ctx.arc(21, 0, 7, 0, Math.PI*2); ctx.fill();
+      // 배럴 (짧음)
+      ctx.fillStyle = "#0c1848"; ctx.strokeStyle = "rgba(0,0,0,0.80)";
+      ctx.fillRect(29, -2, 10, 4); ctx.strokeRect(29, -2, 10, 4);
+      // 손잡이
+      ctx.fillStyle = "#070b24";
+      ctx.fillRect(3, 5, 8, 12); ctx.strokeRect(3, 5, 8, 12);
+      // 청록 테두리 (마취총)
+      ctx.strokeStyle = "#40d0ff"; ctx.lineWidth = 0.9;
+      ctx.strokeRect(-2, -4, 17, 8);
+      // 외부 글로우
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.32;
+      const og = ctx.createRadialGradient(21, 0, 0, 21, 0, 15);
+      og.addColorStop(0, "rgba(80,200,255,0.8)"); og.addColorStop(1, "rgba(0,100,255,0)");
+      ctx.fillStyle = og;
+      ctx.beginPath(); ctx.arc(21, 0, 15, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
     }
 
     function drawRifle(isPlayer) {
-      ctx.fillStyle = isPlayer ? "rgba(255, 200, 50, 0.96)" : "rgba(225, 228, 232, 0.78)";
-      ctx.strokeStyle = "rgba(0,0,0,0.72)";
-      ctx.lineWidth = 1.4;
-      ctx.fillRect(-4, -4, 34, 8);
-      ctx.strokeRect(-4, -4, 34, 8);
-      ctx.fillRect(28, -2, 16, 4);
-      ctx.strokeRect(28, -2, 16, 4);
-      ctx.beginPath();
-      ctx.moveTo(7, 4);
-      ctx.lineTo(13, 14);
-      ctx.lineTo(20, 14);
-      ctx.lineTo(16, 4);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      // Space Marine Bolter (청금 파워 볼터)
+      const bodyCol = isPlayer ? "#1a2e7a" : "#606878";
+      const darkCol = isPlayer ? "#0c1848" : "#484e58";
+      const goldCol = isPlayer ? "#c89010" : "#808070";
+      ctx.strokeStyle = "rgba(0,0,0,0.80)"; ctx.lineWidth = 1.4;
+      // 메인 볼터 바디
+      ctx.fillStyle = bodyCol;
+      ctx.fillRect(-3, -6, 23, 12); ctx.strokeRect(-3, -6, 23, 12);
+      // 총열 하우징
+      ctx.fillStyle = darkCol;
+      ctx.fillRect(20, -4, 14, 8); ctx.strokeRect(20, -4, 14, 8);
+      // 총구
+      ctx.fillStyle = "#060810";
+      ctx.fillRect(32, -3, 5, 6); ctx.strokeRect(32, -3, 5, 6);
+      // 탄창 (big bolter magazine)
+      ctx.fillStyle = darkCol;
+      ctx.fillRect(1, 6, 15, 9); ctx.strokeRect(1, 6, 15, 9);
+      // 손잡이
+      ctx.fillStyle = "#070b24";
+      ctx.fillRect(4, 6, 8, 14); ctx.strokeRect(4, 6, 8, 14);
+      // 금장 테두리
+      ctx.strokeStyle = goldCol; ctx.lineWidth = 0.9;
+      ctx.strokeRect(-2, -5, 21, 10);
+      // 조준선
+      ctx.fillStyle = darkCol; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 0.7;
+      ctx.fillRect(7, -8, 8, 3); ctx.strokeRect(7, -8, 8, 3);
+      // 볼터 분리선
+      ctx.strokeStyle = isPlayer ? "rgba(42,86,200,0.45)" : "rgba(180,190,200,0.35)";
+      ctx.lineWidth = 0.7;
+      ctx.beginPath(); ctx.moveTo(1, 0); ctx.lineTo(22, 0); ctx.stroke();
     }
 
     function drawFlamethrower(isPlayer) {
@@ -6870,8 +7039,8 @@
       ctx.rotate(rp.angle);
       ctx.globalAlpha = 0.92;
       const rpColors = isP2
-        ? { dark: "#122040", mid: "#1a3060", light: "#2a5090", visor: "rgba(60,160,255,0.92)" }
-        : { dark: "#260e40", mid: "#3a1560", light: "#5a2090", visor: "rgba(180,60,255,0.92)" };
+        ? { dark: "#0c1c48", mid: "#183878", light: "#2858a8", visor: "rgba(60,180,255,0.94)", red: "#0060cc" }
+        : { dark: "#22083a", mid: "#3a1268", light: "#5c22a0", visor: "rgba(200,80,255,0.94)", red: "#8820cc" };
       drawMarineSoldier(24, rp.walkTime || 0, rp.isMoving, rpColors);
       ctx.restore();
     }

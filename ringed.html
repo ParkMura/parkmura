@@ -163,6 +163,7 @@
     let pistolAmmo = PISTOL_MAX_AMMO, pistolReloadTimer = 0;
     let heavyPistolAmmo = HEAVY_PISTOL_MAX_AMMO, heavyPistolReloadTimer = 0;
     let sniperCharging = false, sniperChargeDirX = 0, sniperChargeDirY = 0;
+    let missileActive = null; // { x, y, vx, vy, life }
     let raidWarningActive = false;
     let raidWarningPulse = 0;
     let raidAlarmTimer = 0;
@@ -301,6 +302,9 @@
         const _weps = [playerChar.primaryW, playerChar.secondaryW];
         const _idx = _weps.indexOf(currentWeapon);
         currentWeapon = _weps[(_idx + 1) % _weps.length];
+      }
+      if (event.code === "KeyF" && state === "play") {
+        if (playerChar.bombType === "c4" && c4List.length > 0) detonateC4();
       }
     });
     window.addEventListener("keyup", (event) => keys.delete(event.code));
@@ -877,9 +881,9 @@
       recoilAmt = 0;
       rageActive = false; rageTimer = 0; ragePrevHp = player.hp;
       healAuraTimer = 0;
-      c4List.length = 0; c4AimShakeCount = 0;
+      c4List.length = 0; c4AimShakeCount = 0; c4AimShakePrev = 0;
       mortarShells.length = 0;
-      missileCharging = false; missileHoldTimer = 0;
+      missileCharging = false; missileHoldTimer = 0; missileActive = null;
       sniperAmmo = SNIPER_MAX_AMMO; sniperReloadTimer = 0;
       pistolAmmo = PISTOL_MAX_AMMO; pistolReloadTimer = 0;
       heavyPistolAmmo = HEAVY_PISTOL_MAX_AMMO; heavyPistolReloadTimer = 0;
@@ -1452,17 +1456,123 @@
       const range = 140;
       const tx = clamp(player.x + dx / d * range, 70, world.w - 70);
       const ty = clamp(player.y + dy / d * range, 70, world.h - 70);
+
+      if (playerChar.bombType === "c4") {
+        if (c4List.length >= 3) {
+          speechBubbles.push({ x: player.x, y: player.y - 40, text: "C4 MAX (3)", life: 1.0, maxLife: 1.0, screen: true });
+          return;
+        }
+        c4List.push({ x: tx, y: ty, r: 11, placed: true });
+        speechBubbles.push({ x: player.x, y: player.y - 38, text: `C4 SET [${c4List.length}/3]`, life: 0.8, maxLife: 0.8, screen: true });
+        return;
+      }
+
       bombs.push({
         x: player.x + Math.cos(player.angle) * 28,
         y: player.y + Math.sin(player.angle) * 28,
-        sx: player.x,
-        sy: player.y,
-        tx,
-        ty,
-        life: 0.48,
-        maxLife: 0.48,
-        r: 13
+        sx: player.x, sy: player.y, tx, ty,
+        life: 0.48, maxLife: 0.48, r: 13
       });
+    }
+
+    function detonateC4() {
+      if (c4List.length === 0) return;
+      for (const c4 of c4List) explodeBomb({ x: c4.x, y: c4.y, hostile: false });
+      c4List.length = 0;
+      c4AimShakeCount = 0;
+      speechBubbles.push({ x: player.x, y: player.y - 40, text: "BOOM!", life: 1.0, maxLife: 1.0, screen: true });
+    }
+
+    function activateSkill() {
+      if (skillEnergy < 1 || skillActive || missileCharging) return;
+      const st = playerChar.skillType;
+      if (st === "stun_aura") {
+        // MEDIC: 주변 적 마취 (산탄총 사거리 30% = 118px)
+        const stunR = 392 * 0.3;
+        for (const e of enemies) {
+          if (Math.hypot(e.x - player.x, e.y - player.y) < stunR) {
+            e.slowTimer = 3.0;
+            burst(e.x, e.y, "#88ccff", 8);
+          }
+        }
+        skillEnergy = 0;
+        speechBubbles.push({ x: player.x, y: player.y - 40, text: "STUN AURA!", life: 1.5, maxLife: 1.5, screen: true });
+      } else if (st === "mortar") {
+        // BULL: 박격포 10발
+        skillEnergy = 0;
+        const ax = isMobile ? (player.x + mobileControls.aimDirX * 200) : aimTarget.x;
+        const ay = isMobile ? (player.y + mobileControls.aimDirY * 200) : aimTarget.y;
+        for (let i = 0; i < 10; i++) {
+          mortarShells.push({
+            x: ax + (Math.random() - 0.5) * 90,
+            y: ay + (Math.random() - 0.5) * 90,
+            delay: i * 0.18
+          });
+        }
+        speechBubbles.push({ x: player.x, y: player.y - 40, text: "MORTAR FIRE!", life: 1.5, maxLife: 1.5, screen: true });
+      } else if (st === "missile") {
+        // VIPER: 대형 미사일 충전 시작
+        missileCharging = true;
+        missileHoldTimer = 0;
+        missileAimX = Math.cos(player.angle);
+        missileAimY = Math.sin(player.angle);
+        speechBubbles.push({ x: player.x, y: player.y - 40, text: "CHARGING...", life: 3.0, maxLife: 3.0, screen: true });
+      } else {
+        // HAWK: 발칸포 스킬
+        skillActive = true; skillTimer = 3.0; shootCooldown = 0;
+        skillEnergy = 0;
+      }
+    }
+
+    function fireMissile() {
+      if (!missileCharging) return;
+      missileCharging = false;
+      skillEnergy = 0;
+      const spd = 620;
+      missileActive = {
+        x: player.x + missileAimX * 40,
+        y: player.y + missileAimY * 40,
+        vx: missileAimX * spd,
+        vy: missileAimY * spd,
+        life: 3.5
+      };
+      speechBubbles.push({ x: player.x, y: player.y - 40, text: "MISSILE!", life: 1.0, maxLife: 1.0, screen: true });
+      shake = Math.max(shake, 6);
+    }
+
+    function explodeMortar(x, y) {
+      // 수류탄 2배 반경/데미지
+      const radius = 440;
+      if (pointInsideSolid(x, y)) { addFizzle(x, y); return; }
+      addBlastLight(x, y, radius);
+      playSfx("flamer", 0.8);
+      burstVisible(x, y, "#ffe880", 28, radius);
+      for (const enemy of enemies) {
+        const d = Math.hypot(enemy.x - x, enemy.y - y);
+        if (d <= radius && hasExplosionLineOfSight(x, y, enemy.x, enemy.y, d)) {
+          enemy.hp -= (360 * (1 - d / radius) + 180) * (rageActive ? 2 : 1);
+          burst(enemy.x, enemy.y, "#ffcc44", 6);
+        }
+      }
+      shake = Math.max(shake, 10);
+    }
+
+    function explodeMissile(x, y) {
+      // 수류탄 10배 반경/데미지
+      const radius = 1100;
+      if (pointInsideSolid(x, y)) x = clamp(x, 50, world.w - 50), y = clamp(y, 50, world.h - 50);
+      addBlastLight(x, y, radius);
+      playSfx("flamer", 1.2);
+      burstVisible(x, y, "#40c8ff", 60, radius);
+      for (const enemy of enemies) {
+        const d = Math.hypot(enemy.x - x, enemy.y - y);
+        if (d <= radius && hasExplosionLineOfSight(x, y, enemy.x, enemy.y, d)) {
+          enemy.hp -= (1800 * (1 - d / radius) + 900) * (rageActive ? 2 : 1);
+          burst(enemy.x, enemy.y, "#80e8ff", 10);
+        }
+      }
+      shake = Math.max(shake, 18);
+      speechBubbles.push({ x, y: y - 60, text: "MASSIVE IMPACT!", life: 2.0, maxLife: 2.0, screen: false });
     }
 
     function throwEnemyBomb(enemy, target) {
@@ -1879,7 +1989,7 @@
         mobileControls.dodge = false;
       }
       if (player.dodge > 0) speed = 520;
-      if (skillActive) speed = 0;
+      if (skillActive || missileCharging) speed = 0;
 
       const beforePlayerX = player.x;
       const beforePlayerY = player.y;
@@ -1963,7 +2073,7 @@
         }
       } else {
         const mobileFireRifle = isMobile && currentWeapon === 0 && mobileControls.aimAtEdge;
-        const mobileFireOther = isMobile && currentWeapon >= 1 && currentWeapon <= 2 && mobileControls.shoot;
+        const mobileFireOther = isMobile && currentWeapon !== 0 && mobileControls.shoot;
         if (mouse.down || mobileFireRifle || mobileFireOther) fire();
       }
       // 자동 개틀링: 1초 이상 정지하면 자동 속사
@@ -1983,41 +2093,33 @@
           recoilAmt = 0.8; shake = Math.max(shake, 2);
         }
       }
-      if (!skillActive && (mouse.right || keys.has("KeyQ"))) throwBomb(aimTarget);
-      // 스킬 발동: E키 or 모바일 AIM 빠른 팅김 (flick)
-      if (keys.has("KeyE") && skillEnergy >= 1 && !skillActive) {
-        if (playerChar.skillType === "stun_aura") {
-          // MEDIC 스킬: 주변 적 마취 효과
-          const stunR = 55 * 0.3 * 8; // ~132px
-          for (const e of enemies) {
-            if (Math.hypot(e.x - player.x, e.y - player.y) < stunR) {
-              e.slowTimer = 3.0;
-              burst(e.x, e.y, "#88ccff", 8);
-            }
-          }
-          skillEnergy = 0;
-          speechBubbles.push({ x: player.x, y: player.y - 40, text: "STUN AURA!", life: 1.5, maxLife: 1.5, screen: true });
-        } else {
-          skillActive = true; skillTimer = 3.0; shootCooldown = 0;
+      if (!skillActive && !missileCharging && (mouse.right || keys.has("KeyQ"))) throwBomb(aimTarget);
+
+      // C4 위아래 흔들기 감지 (BULL 전용)
+      if (playerChar.bombType === "c4" && c4List.length > 0) {
+        const aimY = isMobile ? mobileControls.aimKnobY : 0;
+        if (Math.abs(aimY - c4AimShakePrev) > 0.35 && Math.sign(aimY) !== Math.sign(c4AimShakePrev) && c4AimShakePrev !== 0) {
+          c4AimShakeCount++;
+          if (c4AimShakeCount >= 3) detonateC4();
         }
+        c4AimShakePrev = aimY;
       }
-      if (isMobile && skillEnergy >= 1 && !skillActive) {
+
+      // 스킬 발동: E키
+      if (keys.has("KeyE") && skillEnergy >= 1 && !skillActive && !missileCharging) {
+        activateSkill();
+      }
+      if (isMobile && skillEnergy >= 1 && !skillActive && !missileCharging) {
         const flickDelta = mobileControls.aimDeflection - mobileControls.prevAimDeflection;
-        if (flickDelta > 0.45 && mobileControls.shoot) {
-          if (playerChar.skillType === "stun_aura") {
-            const stunR2 = 55 * 0.3 * 8;
-            for (const e of enemies) {
-              if (Math.hypot(e.x - player.x, e.y - player.y) < stunR2) {
-                e.slowTimer = 3.0;
-                burst(e.x, e.y, "#88ccff", 8);
-              }
-            }
-            skillEnergy = 0;
-            speechBubbles.push({ x: player.x, y: player.y - 40, text: "STUN AURA!", life: 1.5, maxLife: 1.5, screen: true });
-          } else {
-            skillActive = true; skillTimer = 3.0; shootCooldown = 0;
-          }
-        }
+        if (flickDelta > 0.45 && mobileControls.shoot) activateSkill();
+        // 미사일 충전 중 조이스틱 놓으면 발사
+        if (missileCharging && !mobileControls.shoot) fireMissile();
+      }
+      // 미사일 충전 (VIPER)
+      if (missileCharging) {
+        missileHoldTimer += dt;
+        if (missileHoldTimer >= 3.0) fireMissile();
+        if (!keys.has("KeyE") && !isMobile) fireMissile();
       }
       mobileControls.prevAimDeflection = mobileControls.aimDeflection;
       // 남성 캐릭터 분노 상태: HP 급감 시 자동 발동 (2초 2배 능력)
@@ -2032,10 +2134,27 @@
           if (rageTimer <= 0) { rageActive = false; rageTimer = 0; }
         }
       }
-      // 여성 캐릭터 (MEDIC) 힐 오라: 정지 시 자가치유 초당 5hp
-      if (playerChar.gender === "female" && !player.isMoving) {
-        healAuraTimer += dt;
-        if (healAuraTimer >= 1.0) { healAuraTimer = 0; player.hp = Math.min(Math.round(100 * playerChar.hpMult), player.hp + 5); }
+      // MEDIC 힐 오라: 정지 시 자가치유 초당 10% HP + 주변 아군 힐
+      if (playerChar.gender === "female") {
+        const healR = 392 * 0.3; // 산탄총 사거리의 30%
+        if (!player.isMoving) {
+          healAuraTimer += dt;
+          if (healAuraTimer >= 1.0) {
+            healAuraTimer = 0;
+            const maxHp = Math.round(100 * playerChar.hpMult);
+            player.hp = Math.min(maxHp, player.hp + Math.round(maxHp * 0.1));
+          }
+        } else { healAuraTimer = 0; }
+        // 주변 아군 힐 (멀티플레이어)
+        const ally = (mp.role === "host" && player2) ? player2 : (mp.role === "client" && remotePlayer ? remotePlayer : null);
+        if (ally && Math.hypot(ally.x - player.x, ally.y - player.y) < healR) {
+          if (!healAuraTimer._allyHealTimer) healAuraTimer._allyHealTimer = 0;
+          healAuraTimer._allyHealTimer = (healAuraTimer._allyHealTimer || 0) + dt;
+          if (healAuraTimer._allyHealTimer >= 1.0) {
+            healAuraTimer._allyHealTimer = 0;
+            ally.hp = Math.min(100, (ally.hp || 0) + 10);
+          }
+        }
       } else { healAuraTimer = 0; }
       mobileControls.bomb = false;
       if (mobileControls.swap) {
@@ -2060,6 +2179,25 @@
         if (tb.life <= 0 || tb.x < 0 || tb.x > world.w || tb.y < 0 || tb.y > world.h || pointInsideSolid(tb.x, tb.y)) {
           if (tb.life > 0 && (tb.x >= 0 && tb.x <= world.w && tb.y >= 0 && tb.y <= world.h)) burst(tb.x, tb.y, "#88ccff", 4);
           taserBullets.splice(i, 1);
+        }
+      }
+      // 박격포 탄 업데이트 (BULL 스킬)
+      for (let i = mortarShells.length - 1; i >= 0; i--) {
+        const ms = mortarShells[i];
+        ms.delay -= dt;
+        if (ms.delay <= 0) {
+          explodeMortar(ms.x, ms.y);
+          mortarShells.splice(i, 1);
+        }
+      }
+      // 미사일 업데이트 (VIPER 스킬)
+      if (missileActive) {
+        missileActive.x += missileActive.vx * dt;
+        missileActive.y += missileActive.vy * dt;
+        missileActive.life -= dt;
+        if (missileActive.life <= 0 || pointInsideSolid(missileActive.x, missileActive.y)) {
+          explodeMissile(missileActive.x, missileActive.y);
+          missileActive = null;
         }
       }
       for (let i = bombs.length - 1; i >= 0; i--) {
@@ -4181,6 +4319,8 @@
       ctx.translate(-camera.x, -camera.y);
       drawBlockingPropOverlays();
       for (const b of bombs) drawBomb(b);
+      for (const c4 of c4List) drawC4OnGround(c4);
+      if (missileActive) drawMissileProjectile(missileActive);
       if (isMobile && splitPanelOffsetX === 0) drawMobileAimCursorWorld();
       if (isMobile && splitPanelOffsetX === 0 && currentWeapon === 3 && mobileControls.shoot) drawBombAimPreview();
       ctx.restore();
@@ -4782,13 +4922,15 @@
     function drawPlayer() {
       ctx.save();
       ctx.translate(player.x, player.y);
-      // 발사 반동: 총구 반대 방향으로 몸이 밀림
       if (recoilAmt > 0) {
         ctx.translate(-Math.cos(player.angle) * recoilAmt * 3.5, -Math.sin(player.angle) * recoilAmt * 3.5);
       }
       ctx.rotate(player.angle);
       if (player.invuln > 0) ctx.globalAlpha = 0.65 + Math.sin(performance.now() * 0.04) * 0.25;
-      drawMarineSoldier(24, player.walkTime, player.isMoving, null, skillActive, autoGatling, recoilAmt);
+      // 선택된 캐릭터 색상 적용
+      const pc = playerChar.col;
+      const charColors = { dark: pc.body, mid: pc.light, light: pc.light, red: pc.visor };
+      drawMarineSoldier(24, player.walkTime, player.isMoving, charColors, skillActive, autoGatling, recoilAmt);
       ctx.restore();
     }
 
@@ -4937,6 +5079,53 @@
       ctx.beginPath();
       ctx.ellipse(b.x, b.y + 8, 16 * (1 - t * 0.2), 8, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
+    }
+
+    function drawC4OnGround(c4) {
+      const now = performance.now() * 0.001;
+      ctx.save();
+      ctx.translate(c4.x, c4.y);
+      // Shadow
+      ctx.globalAlpha = 0.22; ctx.fillStyle = "#000";
+      ctx.beginPath(); ctx.ellipse(0, 4, 10, 4, 0, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+      // Body
+      ctx.fillStyle = "#d4d8b0"; ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+      ctx.fillRect(-8, -5, 16, 10); ctx.strokeRect(-8, -5, 16, 10);
+      // Red LED blink
+      ctx.fillStyle = `rgba(255,40,20,${0.5 + Math.sin(now*6)*0.5})`;
+      ctx.beginPath(); ctx.arc(4, -2, 2.5, 0, Math.PI*2); ctx.fill();
+      // C4 label
+      ctx.fillStyle = "#222"; ctx.font = "bold 6px monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("C4", -2, 0);
+      ctx.restore();
+    }
+
+    function drawMissileProjectile(m) {
+      const now = performance.now() * 0.001;
+      const angle = Math.atan2(m.vy, m.vx);
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      ctx.rotate(angle);
+      // Trail glow
+      ctx.save();
+      ctx.globalAlpha = 0.3 + Math.sin(now * 20) * 0.1;
+      const tg = ctx.createLinearGradient(-60, 0, 0, 0);
+      tg.addColorStop(0, "rgba(0,180,255,0)"); tg.addColorStop(1, "rgba(80,200,255,0.7)");
+      ctx.fillStyle = tg; ctx.fillRect(-60, -8, 60, 16);
+      ctx.restore();
+      // Body
+      ctx.fillStyle = "#c0e8ff"; ctx.strokeStyle = "#0080cc"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(-12, -7); ctx.lineTo(-12, 7); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // Warhead tip
+      ctx.fillStyle = "#ff4020";
+      ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(24, 0); ctx.lineTo(18, 3); ctx.closePath(); ctx.fill();
+      // Engine glow
+      ctx.fillStyle = `rgba(80,200,255,${0.7+Math.sin(now*30)*0.3})`;
+      ctx.beginPath(); ctx.arc(-12, 0, 5, 0, Math.PI*2); ctx.fill();
       ctx.restore();
     }
 
@@ -6275,10 +6464,29 @@
         }
       }
 
-      // 폭탄 상태
-      ctx.fillStyle = bombCooldown > 0 ? "rgba(100,120,160,0.7)" : "#60a8d0";
+      // 폭탄/C4 상태
       ctx.font = "bold 9px monospace";
-      ctx.fillText("[Q]BOMB " + (bombCooldown > 0 ? "·" + Math.ceil(bombCooldown * 10) / 10 + "s" : "READY"), 22, 82);
+      if (playerChar.bombType === "c4") {
+        const c4Ready = bombCooldown <= 0;
+        ctx.fillStyle = c4List.length > 0 ? "#ff6030" : (c4Ready ? "#60a8d0" : "rgba(100,120,160,0.7)");
+        const c4Str = c4List.length > 0 ? `[Q]C4 SET[${c4List.length}/3] [F]BOOM` : `[Q]C4 ${c4Ready?"READY":"·"+Math.ceil(bombCooldown*10)/10+"s"}`;
+        ctx.fillText(c4Str, 22, 82);
+      } else {
+        ctx.fillStyle = bombCooldown > 0 ? "rgba(100,120,160,0.7)" : "#60a8d0";
+        ctx.fillText("[Q]BOMB " + (bombCooldown > 0 ? "·" + Math.ceil(bombCooldown * 10) / 10 + "s" : "READY"), 22, 82);
+      }
+      // 미사일 충전 인디케이터 (VIPER)
+      if (missileCharging) {
+        ctx.save();
+        const chPct = Math.min(1, missileHoldTimer / 3.0);
+        ctx.fillStyle = `rgba(0,180,255,${0.5+chPct*0.4})`;
+        ctx.strokeStyle = "rgba(80,200,255,0.9)"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(width/2, height/2, 30 + chPct*16, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle = "#80e8ff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.font = `bold ${Math.round(13+chPct*6)}px monospace`;
+        ctx.fillText(`MISSILE ${Math.round(chPct*100)}%`, width/2, height/2 + 55);
+        ctx.restore();
+      }
 
       // HUD 코너 장식
       ctx.strokeStyle = "rgba(0,180,255,0.5)"; ctx.lineWidth = 1;
@@ -6415,12 +6623,10 @@
     }
 
     function handleSkillButtonClick(x, y) {
-      if (skillEnergy < 1 || skillActive) return false;
+      if (skillEnergy < 1 || skillActive || missileCharging) return false;
       const bx = width / 2 - 36, by = height - 58;
       if (x >= bx && x <= bx + 72 && y >= by && y <= by + 36) {
-        skillActive = true;
-        skillTimer = 3.0;
-        shootCooldown = 0;
+        activateSkill();
         return true;
       }
       return false;
@@ -6475,13 +6681,17 @@
       const attackR = Math.min(70, Math.max(62, width * 0.126));
       const attackY = height - 112;
       const actionX = width - safeRight - base;
-      const weaponNames = ["소총", "산탄총", "마취총", "폭탄"];
+      const weaponNames = { 0:"소총", 1:"산탄총", 2:"마취총", 4:"권총", 5:"저격총", 6:"대구경" };
+      const bombLabel = playerChar.bombType === "c4"
+        ? (c4List.length > 0 ? `C4 [${c4List.length}]` : "C4")
+        : (currentWeapon === 3 ? "BOMB ON" : "BOMB");
       return {
         stick: { x: 88, y: height - 112, r: 58 },
         attack: { x: width - 88, y: attackY, r: attackR },
-        bomb: { id: "bomb", label: currentWeapon === 3 ? "BOMB ON" : "BOMB", x: actionX, y: attackY - attackR - gap - base, w: base, h: base },
+        bomb: { id: "bomb", label: bombLabel, x: actionX, y: attackY - attackR - gap - base, w: base, h: base },
+        detonate: { id: "detonate", label: "BOOM!", x: actionX - base - gap, y: attackY - attackR - gap * 2 - base * 2, w: base, h: base },
         dodge: { id: "dodge", label: "DASH", x: actionX, y: attackY - attackR - gap * 2 - base * 2, w: base, h: base },
-        swap: { id: "swap", label: weaponNames[currentWeapon], x: actionX - base - gap, y: attackY - attackR - gap - base, w: base, h: base }
+        swap: { id: "swap", label: weaponNames[currentWeapon] || "SWAP", x: actionX - base - gap, y: attackY - attackR - gap - base, w: base, h: base }
       };
     }
 
@@ -6563,8 +6773,30 @@
       ctx.font = "800 12px Arial";
       ctx.fillText("AIM", rects.attack.x, rects.attack.y - rects.attack.r - 12);
       drawMobileButton(rects.bomb, bombCooldown <= 0);
+      if (playerChar.bombType === "c4" && c4List.length > 0) {
+        // C4 기폭 버튼 — 빨간 강조
+        const dr = rects.detonate;
+        ctx.fillStyle = `rgba(200,30,20,${0.6 + Math.abs(Math.sin(performance.now()*0.006))*0.35})`;
+        ctx.strokeStyle = "rgba(255,80,40,0.9)";
+        roundRect(dr.x, dr.y, dr.w, dr.h, 12); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.font = "800 11px Arial"; ctx.fillText("DETONATE", dr.x + dr.w/2, dr.y + dr.h/2);
+      }
       drawMobileButton(rects.dodge, player.stamina > 25);
       drawMobileButton(rects.swap, true);
+      // 미사일 충전 인디케이터 (VIPER)
+      if (missileCharging) {
+        ctx.save();
+        const chPct = Math.min(1, missileHoldTimer / 3.0);
+        ctx.fillStyle = `rgba(40,160,255,${0.5 + chPct*0.4})`;
+        ctx.strokeStyle = "rgba(80,200,255,0.9)";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(width/2, height/2, 28 + chPct*14, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle = "#80e8ff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.font = `bold ${Math.round(12+chPct*6)}px monospace`;
+        ctx.fillText(`MISSILE ${Math.round(chPct*100)}%`, width/2, height/2 + 50);
+        ctx.restore();
+      }
       ctx.restore();
     }
 
@@ -6730,7 +6962,13 @@
       if (state !== "play") continue;
       const action = mobileActionAt(p.x, p.y);
         if (action === "bomb") {
-          currentWeapon = 3; // 폭탄 무기로 전환
+          if (playerChar.bombType === "c4") {
+            throwBomb(isMobile ? { x: player.x + mobileControls.aimDirX * 140, y: player.y + mobileControls.aimDirY * 140 } : aimTarget);
+          } else {
+            currentWeapon = 3;
+          }
+        } else if (action === "detonate") {
+          detonateC4();
         } else if (action === "dodge") {
           mobileControls.dodge = true;
         } else if (action === "swap") {
@@ -6861,9 +7099,9 @@
 
     function mobileActionAt(x, y) {
       const rects = mobileButtonRects();
-      for (const key of ["bomb", "dodge", "swap"]) {
+      for (const key of ["bomb", "detonate", "dodge", "swap"]) {
         const rect = rects[key];
-        if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) return key;
+        if (rect && x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) return key;
       }
       return null;
     }

@@ -179,6 +179,9 @@
 
     const world = { w: 2200, h: 1600 };
     const camera = { x: 0, y: 0, zoom: 1 };
+    const camera2 = { x: 0, y: 0, zoom: 0.81 };
+    let splitPanelOffsetX = 0;
+    let lightSourcePlayer = null;
     const mapTool = {
       tool: "wall",
       grid: 42,
@@ -2411,23 +2414,36 @@
     }
 
     function updateCamera(dt, worldMouse) {
+      const _p2cam = (mp.role === "host" && player2) ? player2 : (mp.role === "client" && remotePlayer ? remotePlayer : null);
+      const isSplitScreen = !!_p2cam;
+      const effectiveWidth = isSplitScreen ? width / 2 : width;
       let target = { x: player.x, y: player.y };
       camera.zoom = cameraMode === 2 ? 0.81 : 0.9;
       if (cameraMode === 2) {
         target = smartCameraTarget(worldMouse);
       }
-      const viewW = width / camera.zoom;
+      const viewW = effectiveWidth / camera.zoom;
       const viewH = height / camera.zoom;
       const tx = clamp(target.x - viewW / 2, 0, Math.max(0, world.w - viewW));
       const ty = clamp(target.y - viewH / 2, 0, Math.max(0, world.h - viewH));
       if (cameraMode === 1) {
         camera.x = tx;
         camera.y = ty;
-        return;
+      } else {
+        const follow = 1 - Math.pow(0.001, dt);
+        camera.x += (tx - camera.x) * follow;
+        camera.y += (ty - camera.y) * follow;
       }
-      const follow = 1 - Math.pow(0.001, dt);
-      camera.x += (tx - camera.x) * follow;
-      camera.y += (ty - camera.y) * follow;
+      if (_p2cam) {
+        camera2.zoom = 0.81;
+        const viewW2 = (width / 2) / camera2.zoom;
+        const viewH2 = height / camera2.zoom;
+        const p2tx = clamp(_p2cam.x - viewW2 / 2, 0, Math.max(0, world.w - viewW2));
+        const p2ty = clamp(_p2cam.y - viewH2 / 2, 0, Math.max(0, world.h - viewH2));
+        const follow2 = 1 - Math.pow(0.001, dt);
+        camera2.x += (p2tx - camera2.x) * follow2;
+        camera2.y += (p2ty - camera2.y) * follow2;
+      }
     }
 
     function smartCameraTarget(worldMouse) {
@@ -2793,7 +2809,52 @@
       else if (state === "lobby") drawLobby();
       else if (state === "maptool") drawMapTool();
       else {
-        drawGame();
+        const _p2split = (mp.role === "host" && player2) ? player2 : (mp.role === "client" && remotePlayer ? remotePlayer : null);
+        if (_p2split) {
+          const halfW = width / 2;
+
+          // Left panel — camera follows player 1
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, halfW, height);
+          ctx.clip();
+          splitPanelOffsetX = 0;
+          drawGame();
+          ctx.restore();
+
+          // Right panel — camera2 follows player 2
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(halfW, 0, halfW, height);
+          ctx.clip();
+          splitPanelOffsetX = halfW;
+          const _sc2x = camera.x, _sc2y = camera.y, _sc2z = camera.zoom;
+          camera.x = camera2.x; camera.y = camera2.y; camera.zoom = camera2.zoom;
+          lightSourcePlayer = _p2split;
+          drawGame();
+          lightSourcePlayer = null;
+          camera.x = _sc2x; camera.y = _sc2y; camera.zoom = _sc2z;
+          splitPanelOffsetX = 0;
+          ctx.restore();
+
+          // Divider line
+          ctx.setTransform(scale, 0, 0, scale, 0, 0);
+          ctx.strokeStyle = "rgba(0,220,255,0.5)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(halfW, 0);
+          ctx.lineTo(halfW, height);
+          ctx.stroke();
+          // Player labels
+          ctx.font = "bold 11px monospace";
+          ctx.textAlign = "center";
+          ctx.fillStyle = "rgba(255,215,80,0.9)";
+          ctx.fillText("1P", halfW * 0.5, 12);
+          ctx.fillStyle = "rgba(80,180,255,0.9)";
+          ctx.fillText("2P", halfW + halfW * 0.5, 12);
+        } else {
+          drawGame();
+        }
         if (state === "dead") drawDeath();
       }
       ctx.restore();
@@ -3271,19 +3332,23 @@
       drawParticles();
       drawOriginalFlashlightLayer();
       ctx.save();
-      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.setTransform(scale, 0, 0, scale, splitPanelOffsetX * scale, 0);
       ctx.translate(sx, sy);
       ctx.scale(camera.zoom, camera.zoom);
       ctx.translate(-camera.x, -camera.y);
       drawBlockingPropOverlays();
       for (const b of bombs) drawBomb(b);
-      if (isMobile) drawMobileAimCursorWorld();
-      if (isMobile && currentWeapon === 3 && mobileControls.shoot) drawBombAimPreview();
+      if (isMobile && splitPanelOffsetX === 0) drawMobileAimCursorWorld();
+      if (isMobile && splitPanelOffsetX === 0 && currentWeapon === 3 && mobileControls.shoot) drawBombAimPreview();
       ctx.restore();
-      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.setTransform(scale, 0, 0, scale, splitPanelOffsetX * scale, 0);
       drawRaidWarningOverlay();
-      drawHud();
-      if (isMobile) drawMobileControls();
+      if (splitPanelOffsetX > 0) {
+        drawP2StatusHud();
+      } else {
+        drawHud();
+        if (isMobile) drawMobileControls();
+      }
     }
 
     function drawBombAimPreview() {
@@ -3339,69 +3404,84 @@
 
     function drawGround() {
       // 우주선 금속 바닥
-      ctx.fillStyle = "#080b11";
+      // Space Marine 2 gothic fortress floor
+      ctx.fillStyle = "#0a0806";
       ctx.fillRect(0, 0, world.w, world.h);
 
       const tile = 80;
       for (let ty = 0; ty < world.h; ty += tile) {
         for (let tx = 0; tx < world.w; tx += tile) {
           const ix = Math.floor(tx / tile), iy = Math.floor(ty / tile);
-          const seed = (ix * 31 + iy * 17) % 100;
+          const seed = (ix * 37 + iy * 19) % 100;
 
-          // 패널 베이스 색상 (미세 변화)
-          const base = seed < 12 ? "#0d1118" : (seed < 30 ? "#0b0f16" : "#090c13");
+          // Stone/ceramite base slab
+          const base = seed < 15 ? "#131009" : (seed < 40 ? "#110e08" : "#0e0c07");
           ctx.fillStyle = base;
           ctx.fillRect(tx + 1, ty + 1, tile - 2, tile - 2);
 
-          // 패널 내부 그라데이션 느낌 (상단 하이라이트)
-          ctx.fillStyle = "rgba(60,100,180,0.04)";
-          ctx.fillRect(tx + 2, ty + 2, tile - 4, 8);
+          // Top-edge highlight (worn edge)
+          ctx.fillStyle = "rgba(120,90,40,0.06)";
+          ctx.fillRect(tx + 2, ty + 2, tile - 4, 4);
 
-          // 종류별 특수 패널
-          if (seed % 16 === 0) {
-            // 환기구 (어두운 격자)
-            ctx.fillStyle = "#050710";
-            ctx.fillRect(tx + 8, ty + 8, tile - 16, tile - 16);
-            // 환기구 격자선
-            ctx.strokeStyle = "rgba(0,180,255,0.2)";
-            ctx.lineWidth = 0.5;
-            for (let g = tx + 16; g < tx + tile - 8; g += 8) {
-              ctx.beginPath(); ctx.moveTo(g, ty + 8); ctx.lineTo(g, ty + tile - 8); ctx.stroke();
+          // Special tiles (gothic patterns)
+          if (seed % 17 === 0) {
+            // Iron grating inset
+            ctx.fillStyle = "#090705";
+            ctx.fillRect(tx + 6, ty + 6, tile - 12, tile - 12);
+            ctx.strokeStyle = "rgba(140,100,30,0.22)";
+            ctx.lineWidth = 0.8;
+            for (let g = tx + 12; g < tx + tile - 6; g += 7) {
+              ctx.beginPath(); ctx.moveTo(g, ty + 6); ctx.lineTo(g, ty + tile - 6); ctx.stroke();
             }
-            for (let g = ty + 16; g < ty + tile - 8; g += 8) {
-              ctx.beginPath(); ctx.moveTo(tx + 8, g); ctx.lineTo(tx + tile - 8, g); ctx.stroke();
+            for (let g = ty + 12; g < ty + tile - 6; g += 7) {
+              ctx.beginPath(); ctx.moveTo(tx + 6, g); ctx.lineTo(tx + tile - 6, g); ctx.stroke();
             }
-            // 환기구 발광
-            ctx.fillStyle = "rgba(0,160,255,0.07)";
-            ctx.fillRect(tx + 8, ty + 8, tile - 16, tile - 16);
-          } else if (seed % 23 === 0) {
-            // 경고 마킹 (패널 가장자리 주황 줄무늬)
+            ctx.fillStyle = "rgba(180,120,20,0.04)";
+            ctx.fillRect(tx + 6, ty + 6, tile - 12, tile - 12);
+          } else if (seed % 13 === 0) {
+            // Imperial aquila outline (stylised eagle wings)
             ctx.save();
-            ctx.globalAlpha = 0.22;
-            const stripeW = 6;
-            ctx.fillStyle = "#ff8800";
-            for (let s = 0; s < tile; s += stripeW * 2) {
-              ctx.beginPath();
-              ctx.moveTo(tx + s, ty); ctx.lineTo(tx + s + stripeW, ty);
-              ctx.lineTo(tx + s + stripeW - tile * 0.05, ty + tile);
-              ctx.lineTo(tx + s - tile * 0.05, ty + tile);
-              ctx.closePath(); ctx.fill();
+            ctx.globalAlpha = 0.1;
+            ctx.strokeStyle = "#c8a020";
+            ctx.lineWidth = 0.6;
+            const cx2 = tx + tile / 2, cy2 = ty + tile / 2;
+            ctx.beginPath();
+            ctx.moveTo(cx2, cy2 - 10);
+            ctx.bezierCurveTo(cx2 - 18, cy2 - 18, cx2 - 26, cy2 + 4, cx2 - 10, cy2 + 4);
+            ctx.moveTo(cx2, cy2 - 10);
+            ctx.bezierCurveTo(cx2 + 18, cy2 - 18, cx2 + 26, cy2 + 4, cx2 + 10, cy2 + 4);
+            ctx.moveTo(cx2 - 4, cy2 + 4); ctx.lineTo(cx2 + 4, cy2 + 4);
+            ctx.moveTo(cx2, cy2 - 10); ctx.lineTo(cx2, cy2 + 14);
+            ctx.stroke();
+            ctx.restore();
+          } else if (seed % 11 === 0) {
+            // Hazard stripe corner (black/yellow worn)
+            ctx.save();
+            ctx.globalAlpha = 0.18;
+            ctx.fillStyle = "#c07010";
+            ctx.fillRect(tx, ty, tile, 5);
+            ctx.fillRect(tx, ty + tile - 5, tile, 5);
+            ctx.globalAlpha = 0.08;
+            ctx.fillStyle = "#000";
+            for (let s = 0; s < tile; s += 10) {
+              ctx.fillRect(tx + s, ty, 5, 5);
+              ctx.fillRect(tx + s, ty + tile - 5, 5, 5);
             }
             ctx.restore();
-          } else if (seed % 19 === 0) {
-            // 손상된 바닥 (균열)
-            ctx.strokeStyle = "rgba(0,120,200,0.3)";
+          } else if (seed % 29 === 0) {
+            // Battle damage crack
+            ctx.strokeStyle = "rgba(180,100,20,0.18)";
             ctx.lineWidth = 0.7;
             ctx.beginPath();
-            ctx.moveTo(tx + 20, ty + 30); ctx.lineTo(tx + 45, ty + 18); ctx.lineTo(tx + 60, ty + 55);
+            ctx.moveTo(tx + 15, ty + 25); ctx.lineTo(tx + 38, ty + 14); ctx.lineTo(tx + 55, ty + 48); ctx.lineTo(tx + 70, ty + 40);
             ctx.stroke();
           }
         }
       }
 
-      // 패널 경계선 (얇은 청록 발광)
-      ctx.strokeStyle = "rgba(0,140,255,0.14)";
-      ctx.lineWidth = 0.5;
+      // Stone slab mortar lines (tight grid)
+      ctx.strokeStyle = "rgba(80,60,20,0.18)";
+      ctx.lineWidth = 0.8;
       for (let y = 0; y < world.h; y += tile) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(world.w, y); ctx.stroke();
       }
@@ -3409,9 +3489,9 @@
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, world.h); ctx.stroke();
       }
 
-      // 구조 보강선 (4타일마다 굵은 선)
-      ctx.strokeStyle = "rgba(20,80,180,0.28)";
-      ctx.lineWidth = 1.5;
+      // Heavy structural seams every 4 tiles (fortress buttress lines)
+      ctx.strokeStyle = "rgba(160,110,30,0.22)";
+      ctx.lineWidth = 2;
       for (let y = 0; y < world.h; y += tile * 4) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(world.w, y); ctx.stroke();
       }
@@ -3419,11 +3499,13 @@
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, world.h); ctx.stroke();
       }
 
-      // 바닥 엠비언트 더스트 (먼지 입자)
-      ctx.fillStyle = "rgba(100,160,255,0.04)";
-      for (let i = 0; i < 200; i++) {
-        const x = (i * 1373) % world.w, y = (i * 971) % world.h;
-        ctx.fillRect(x, y, 1 + (i % 3), 1);
+      // Blood/oil stain scatter
+      ctx.fillStyle = "rgba(80,20,10,0.06)";
+      for (let i = 0; i < 120; i++) {
+        const x = (i * 1847) % world.w, y = (i * 1231) % world.h;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 2 + (i % 5), 1 + (i % 3), (i % 6) * 0.5, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
@@ -3457,18 +3539,18 @@
         ctx.clip();
       }
 
-      // 벽 베이스 (깊은 금속 어둠)
-      const wallGrad = ctx.createLinearGradient(wall.x, wall.y, wall.x + (isH ? 0 : wall.w * 0.4), wall.y + (isH ? wall.h * 0.6 : 0));
-      wallGrad.addColorStop(0, "#151b26");
-      wallGrad.addColorStop(0.4, "#0a0d14");
-      wallGrad.addColorStop(1, "#050710");
+      // Space Marine 2 ceramite fortress wall
+      const wallGrad = ctx.createLinearGradient(wall.x, wall.y, wall.x + (isH ? 0 : wall.w), wall.y + (isH ? wall.h : 0));
+      wallGrad.addColorStop(0, "#201a10");
+      wallGrad.addColorStop(0.35, "#161108");
+      wallGrad.addColorStop(1, "#0c0905");
       ctx.fillStyle = wallGrad;
       ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
 
-      // 패널 분할선
-      ctx.strokeStyle = "rgba(30,60,120,0.5)";
-      ctx.lineWidth = 0.8;
-      const panelSize = 72;
+      // Ceramite armor panel seams
+      ctx.strokeStyle = "rgba(100,75,25,0.45)";
+      ctx.lineWidth = 1;
+      const panelSize = 68;
       if (isH) {
         for (let x = wall.x + panelSize; x < wall.x + wall.w - 4; x += panelSize) {
           ctx.beginPath(); ctx.moveTo(x, wall.y + 3); ctx.lineTo(x, wall.y + wall.h - 3); ctx.stroke();
@@ -3479,40 +3561,51 @@
         }
       }
 
-      // 벽 장착 LED 인디케이터 (파란 점)
-      if (isH && wall.w > 100) {
-        const ledSpacing = 80;
-        for (let x = wall.x + 36; x < wall.x + wall.w - 20; x += ledSpacing) {
-          ctx.fillStyle = "rgba(0,200,255,0.55)";
-          ctx.fillRect(x, wall.y + wall.h - 4, 3, 3);
+      // Rivet detail along edges
+      const rivetColor = "rgba(160,120,40,0.5)";
+      if (isH && wall.w > 60) {
+        ctx.fillStyle = rivetColor;
+        for (let x = wall.x + 10; x < wall.x + wall.w - 6; x += 20) {
+          ctx.fillRect(x, wall.y + 2, 2, 2);
+          ctx.fillRect(x, wall.y + wall.h - 4, 2, 2);
         }
       }
-      if (isV && wall.h > 100) {
-        const ledSpacing = 80;
-        for (let y = wall.y + 36; y < wall.y + wall.h - 20; y += ledSpacing) {
-          ctx.fillStyle = "rgba(0,200,255,0.55)";
-          ctx.fillRect(wall.x + wall.w - 4, y, 3, 3);
+      if (isV && wall.h > 60) {
+        ctx.fillStyle = rivetColor;
+        for (let y = wall.y + 10; y < wall.y + wall.h - 6; y += 20) {
+          ctx.fillRect(wall.x + 2, y, 2, 2);
+          ctx.fillRect(wall.x + wall.w - 4, y, 2, 2);
         }
       }
 
-      // 경고 줄무늬 (벽 하단 좁은 영역)
+      // Hazard warning band (black-yellow, worn)
       ctx.save();
-      ctx.globalAlpha = 0.18;
-      ctx.fillStyle = "#ff8800";
-      if (isH) ctx.fillRect(wall.x + 4, wall.y + wall.h - 3, wall.w - 8, 2);
-      else if (isV) ctx.fillRect(wall.x + wall.w - 3, wall.y + 4, 2, wall.h - 8);
+      ctx.globalAlpha = 0.22;
+      if (isH) {
+        ctx.fillStyle = "#b06010";
+        ctx.fillRect(wall.x + 3, wall.y + wall.h - 4, wall.w - 6, 3);
+        ctx.fillStyle = "#000";
+        for (let x = wall.x + 3; x < wall.x + wall.w - 3; x += 8)
+          ctx.fillRect(x, wall.y + wall.h - 4, 4, 3);
+      } else if (isV) {
+        ctx.fillStyle = "#b06010";
+        ctx.fillRect(wall.x + wall.w - 4, wall.y + 3, 3, wall.h - 6);
+        ctx.fillStyle = "#000";
+        for (let y = wall.y + 3; y < wall.y + wall.h - 3; y += 8)
+          ctx.fillRect(wall.x + wall.w - 4, y, 3, 4);
+      }
       ctx.restore();
 
-      // 상단 발광 엣지 (밝은 청록 — 천장-벽 경계)
-      ctx.strokeStyle = "rgba(0,200,255,0.75)";
-      ctx.lineWidth = 2;
+      // Top highlight edge (fortress parapet glow)
+      ctx.strokeStyle = "rgba(200,150,40,0.55)";
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(wall.x, wall.y);
       ctx.lineTo(wall.x + wall.w, wall.y);
       ctx.stroke();
 
-      // 측면 엣지
-      ctx.strokeStyle = "rgba(0,140,220,0.35)";
+      // Side edges
+      ctx.strokeStyle = "rgba(140,100,30,0.28)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(wall.x, wall.y);
@@ -3521,9 +3614,9 @@
       ctx.lineTo(wall.x + wall.w, wall.y + wall.h);
       ctx.stroke();
 
-      // 하단 엣지 (약한)
-      ctx.strokeStyle = "rgba(255,255,255,0.06)";
-      ctx.lineWidth = 1;
+      // Bottom shadow
+      ctx.strokeStyle = "rgba(0,0,0,0.5)";
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(wall.x, wall.y + wall.h);
       ctx.lineTo(wall.x + wall.w, wall.y + wall.h);
@@ -3539,16 +3632,16 @@
       const isOpen = door.open > 0.05;
       ctx.save();
 
-      // 에어락 프레임
-      const frameColor = door.target ? "rgba(0,200,255,0.8)" : (isOpen ? "rgba(0,200,120,0.7)" : "rgba(0,140,220,0.55)");
+      // Fortress gate heavy frame
+      const frameColor = door.target ? "rgba(200,160,40,0.85)" : (isOpen ? "rgba(160,200,80,0.7)" : "rgba(140,100,30,0.7)");
       ctx.strokeStyle = frameColor;
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 3;
       ctx.strokeRect(door.x, door.y, door.w, door.h);
 
-      // 프레임 코너 브래킷
-      const bc = 6;
-      ctx.strokeStyle = door.target ? "#00ffff" : "#0090e0";
-      ctx.lineWidth = 1.5;
+      // Heavy corner bolts
+      const bc = 7;
+      ctx.strokeStyle = door.target ? "#e0c040" : "#a07828";
+      ctx.lineWidth = 2;
       const corners = [[door.x, door.y], [door.x + door.w, door.y], [door.x, door.y + door.h], [door.x + door.w, door.y + door.h]];
       const signs = [[ 1, 1],[-1, 1],[ 1,-1],[-1,-1]];
       for (let i = 0; i < 4; i++) {
@@ -3556,36 +3649,38 @@
         ctx.beginPath();
         ctx.moveTo(bx + sx * bc, by); ctx.lineTo(bx, by); ctx.lineTo(bx, by + sy * bc);
         ctx.stroke();
+        ctx.fillStyle = door.target ? "rgba(220,180,50,0.8)" : "rgba(160,120,40,0.8)";
+        ctx.fillRect(bx - 2, by - 2, 4, 4);
       }
 
-      // 에어락 패널 (문 판)
+      // Gate panels
       drawSplitDoorPanels(door);
 
-      // 개방 시 에너지 파동
+      // Opening energy pulse
       if (isOpen && door.open < 0.92) {
         const openGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 28 + door.open * 18);
-        openGlow.addColorStop(0, "rgba(0,200,255,0.22)");
-        openGlow.addColorStop(1, "rgba(0,200,255,0)");
+        openGlow.addColorStop(0, "rgba(200,150,40,0.18)");
+        openGlow.addColorStop(1, "rgba(200,150,40,0)");
         ctx.fillStyle = openGlow;
         ctx.beginPath(); ctx.arc(cx, cy, 28 + door.open * 18, 0, Math.PI * 2); ctx.fill();
       }
 
-      // 문 상태 LED 표시
-      const ledColor = isOpen ? "rgba(0,255,120,0.9)" : (door.target ? "rgba(0,180,255,0.9)" : "rgba(255,60,60,0.9)");
+      // Status indicator (red=locked, green=open)
+      const ledColor = isOpen ? "rgba(80,255,100,0.9)" : (door.target ? "rgba(220,180,40,0.9)" : "rgba(220,40,30,0.9)");
       ctx.fillStyle = ledColor;
       const ledSize = 4;
       ctx.fillRect(cx - ledSize / 2, door.axis === "h" ? door.y - 3 : cy - ledSize / 2,
         door.axis === "h" ? ledSize : 3, door.axis === "h" ? 3 : ledSize);
 
-      // AIRLOCK 텍스트
+      // Gate label
       if (!isOpen) {
         ctx.save();
-        ctx.globalAlpha = 0.45;
-        ctx.fillStyle = door.target ? "#00e8ff" : "#6090c0";
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = door.target ? "#e0c040" : "#806030";
         ctx.font = "bold 7px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("AIRLK", cx, cy);
+        ctx.fillText("GATE", cx, cy);
         ctx.restore();
       }
       ctx.restore();
@@ -3593,21 +3688,25 @@
 
     function drawSplitDoorPanels(door) {
       if (door.open > 0.92) return;
-      ctx.fillStyle = door.target ? "#313a47" : "#101318";
-      ctx.strokeStyle = "rgba(230,235,242,0.65)";
+      const baseColor = door.target ? "#2a2010" : "#1a1208";
+      ctx.fillStyle = baseColor;
+      ctx.strokeStyle = door.target ? "rgba(200,160,40,0.55)" : "rgba(140,100,30,0.5)";
       ctx.lineWidth = 1.5;
       const rects = doorCollisionRects(door);
       for (const rect of rects) {
         if (rect.w <= 0.5 || rect.h <= 0.5) continue;
         ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
         ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-        ctx.fillStyle = "rgba(255,255,255,0.28)";
+        // Iron banding
+        ctx.fillStyle = "rgba(180,130,30,0.25)";
         if (door.axis === "h") {
-          ctx.fillRect(rect.x + rect.w - 7, rect.y + 6, 2, Math.max(4, rect.h - 12));
+          ctx.fillRect(rect.x, rect.y, rect.w, 3);
+          ctx.fillRect(rect.x, rect.y + rect.h - 3, rect.w, 3);
         } else {
-          ctx.fillRect(rect.x + 6, rect.y + rect.h - 7, Math.max(4, rect.w - 12), 2);
+          ctx.fillRect(rect.x, rect.y, 3, rect.h);
+          ctx.fillRect(rect.x + rect.w - 3, rect.y, 3, rect.h);
         }
-        ctx.fillStyle = door.target ? "#313a47" : "#101318";
+        ctx.fillStyle = baseColor;
       }
     }
 
@@ -3647,17 +3746,27 @@
     }
 
     function drawCrateFallback(s) {
-      ctx.fillStyle = "#5b5146";
+      // Space Marine 2 supply crate (dark iron with gold trim)
+      ctx.fillStyle = "#2a1e10";
       ctx.fillRect(-s / 2, -s / 2, s, s);
-      ctx.strokeStyle = "#c3b7a5";
+      // Corner reinforcements
+      ctx.fillStyle = "#8a6520";
+      const c = s * 0.12;
+      ctx.fillRect(-s / 2, -s / 2, c, c);
+      ctx.fillRect(s / 2 - c, -s / 2, c, c);
+      ctx.fillRect(-s / 2, s / 2 - c, c, c);
+      ctx.fillRect(s / 2 - c, s / 2 - c, c, c);
+      // Iron banding
+      ctx.strokeStyle = "#6a4c18";
       ctx.lineWidth = 2;
       ctx.strokeRect(-s / 2, -s / 2, s, s);
-      ctx.beginPath();
-      ctx.moveTo(-s * 0.34, -s * 0.34);
-      ctx.lineTo(s * 0.34, s * 0.34);
-      ctx.moveTo(s * 0.34, -s * 0.34);
-      ctx.lineTo(-s * 0.34, s * 0.34);
-      ctx.stroke();
+      ctx.strokeRect(-s / 2 + 3, -s / 2 + 3, s - 6, s - 6);
+      // Imperial markings
+      ctx.fillStyle = "rgba(180,130,40,0.35)";
+      ctx.font = Math.round(s * 0.28) + "px serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("⚡", 0, 0);
     }
 
     function drawFixtureBodies() {
@@ -3841,7 +3950,8 @@
     }
 
     function drawEnemy(e) {
-      if (!hasLOS(player.x, player.y, e.x, e.y)) return;
+      const _ep2 = (mp.role === "host" && player2) ? player2 : (mp.role === "client" && remotePlayer ? remotePlayer : null);
+      if (!hasLOS(player.x, player.y, e.x, e.y) && (!_ep2 || !hasLOS(_ep2.x, _ep2.y, e.x, e.y))) return;
       ctx.save();
       ctx.translate(e.x, e.y);
       if (e.dropTime > 0) {
@@ -4917,11 +5027,12 @@
     }
 
     function drawOriginalFlashlightLayer() {
+      const lp = lightSourcePlayer || player;
       const z = camera.zoom;
-      const px = screenX(player.x);
-      const py = screenY(player.y);
-      const forward = { x: Math.cos(player.angle), y: Math.sin(player.angle) };
-      const side = { x: -Math.sin(player.angle), y: Math.cos(player.angle) };
+      const px = screenX(lp.x);
+      const py = screenY(lp.y);
+      const forward = { x: Math.cos(lp.angle), y: Math.sin(lp.angle) };
+      const side = { x: -Math.sin(lp.angle), y: Math.cos(lp.angle) };
 
       // Ringed's original player scene places the main Light2D at (4.42135, -167.677)
       // with flashlight.png at scale 0.387037 and energy 1.3. Since this Canvas
@@ -4934,7 +5045,7 @@
         x: 5.29622 + (4.38928 - 5.29622) * flickerPhase,
         y: 0.776039 + (-5.71774 - 0.776039) * flickerPhase
       };
-      const healthEnergy = player.hp / 100;
+      const healthEnergy = (lp.hp || 100) / 100;
       const mainEnergy = 0.98 * healthEnergy;
       const fillEnergy = 0.38 * healthEnergy;
       const beamCenter = {
@@ -4953,9 +5064,9 @@
       drawKillLights(lightCtx);
       drawBlastLights(lightCtx);
       drawRadialLight(lightCtx, px, py, 20 * z, 180 * z, fillEnergy * 1.0);
-      drawSoftConeLight(lightCtx, px, py, player.angle, 480 * z, 1.22, mainEnergy * 0.92);
-      drawSoftConeLight(lightCtx, px + forward.x * 52 * z, py + forward.y * 52 * z, player.angle, 340 * z, 0.9, mainEnergy * 0.42);
-      drawLightTexture(lightCtx, assets.flashlight, beamCenter.x, beamCenter.y, player.angle + Math.PI / 2, 1024 * 0.2 * originalScalePulse * z, 1024 * 0.2 * originalScalePulse * z, mainEnergy * 0.07);
+      drawSoftConeLight(lightCtx, px, py, lp.angle, 480 * z, 1.22, mainEnergy * 0.92);
+      drawSoftConeLight(lightCtx, px + forward.x * 52 * z, py + forward.y * 52 * z, lp.angle, 340 * z, 0.9, mainEnergy * 0.42);
+      drawLightTexture(lightCtx, assets.flashlight, beamCenter.x, beamCenter.y, lp.angle + Math.PI / 2, 1024 * 0.2 * originalScalePulse * z, 1024 * 0.2 * originalScalePulse * z, mainEnergy * 0.07);
       for (const flash of flashes) {
         const alpha = Math.max(0, flash.life / flash.maxLife);
         drawLightTexture(lightCtx, assets.shotLight, screenX(flash.x), screenY(flash.y), flash.angle + Math.PI / 2, 430 * z, 430 * z, alpha * 0.9);
@@ -4973,11 +5084,12 @@
       drawVisibleBlastBloom();
       drawVisibleFizzles();
       ctx.save();
+      ctx.setTransform(scale, 0, 0, scale, splitPanelOffsetX * scale, 0);
       ctx.scale(camera.zoom, camera.zoom);
       ctx.translate(-camera.x, -camera.y);
       drawFacility();
       ctx.restore();
-      drawVisibleFlashlightGlow(px, py, beamCenter.x, beamCenter.y, player.angle, mainEnergy);
+      drawVisibleFlashlightGlow(px, py, beamCenter.x, beamCenter.y, lp.angle, mainEnergy);
     }
 
     function drawInstalledLights(target) {
@@ -5524,6 +5636,47 @@
         dodge: { id: "dodge", label: "DASH", x: actionX, y: attackY - attackR - gap * 2 - base * 2, w: base, h: base },
         swap: { id: "swap", label: weaponNames[currentWeapon], x: actionX - base - gap, y: attackY - attackR - gap - base, w: base, h: base }
       };
+    }
+
+    function drawP2StatusHud() {
+      const p2Obj = (mp.role === "host" && player2) ? player2 : (mp.role === "client" && remotePlayer ? remotePlayer : null);
+      if (!p2Obj) return;
+      const hp = Math.max(0, p2Obj.hp || 0);
+      const hpRatio = hp / 100;
+      const hpColor = hpRatio > 0.5 ? "#22e870" : (hpRatio > 0.25 ? "#f0a020" : "#e83020");
+      const now = performance.now() * 0.001;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(10, 10);
+      ctx.lineTo(156, 10);
+      ctx.lineTo(162, 16);
+      ctx.lineTo(162, 54);
+      ctx.lineTo(10, 54);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(2,6,14,0.88)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(80,160,255,0.55)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(22, 18, 118, 8);
+      ctx.fillStyle = "#040c0a"; ctx.fillRect(23, 19, 116, 6);
+      const hpW = Math.floor(hpRatio * 116);
+      for (let hx = 0; hx < hpW; hx += 5) {
+        ctx.fillStyle = hpColor;
+        ctx.globalAlpha = 0.9 + Math.sin(now * 3 + hx * 0.1) * 0.08;
+        ctx.fillRect(23 + hx, 19, Math.min(4, hpW - hx), 6);
+      }
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "rgba(0,200,255,0.3)"; ctx.lineWidth = 0.8;
+      ctx.strokeRect(22, 18, 118, 8);
+      ctx.fillStyle = hpColor; ctx.font = "bold 9px monospace";
+      ctx.fillText("■ HP " + Math.ceil(hp) + "%", 22, 16);
+      ctx.restore();
+      ctx.fillStyle = "rgba(80,200,255,0.85)";
+      ctx.font = "bold 9px monospace";
+      ctx.fillText("◈ 2P MARINE", 22, 42);
     }
 
     function drawMobileControls() {
@@ -6285,7 +6438,7 @@
     }
 
     function screenX(x) {
-      return (x - camera.x) * camera.zoom;
+      return (x - camera.x) * camera.zoom + splitPanelOffsetX;
     }
 
     function screenY(y) {

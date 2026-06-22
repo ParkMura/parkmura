@@ -3180,201 +3180,457 @@
     function drawCharSelect() {
       const now = performance.now() * 0.001;
       const cx = width / 2, cy = height / 2;
-      // Background
+
+      // Dark gothic fortress background
       const bg = ctx.createLinearGradient(0, 0, 0, height);
-      bg.addColorStop(0, "#060302"); bg.addColorStop(1, "#0a0604");
+      bg.addColorStop(0, "#060302"); bg.addColorStop(0.5, "#0c0704"); bg.addColorStop(1, "#090503");
       ctx.fillStyle = bg; ctx.fillRect(0, 0, width, height);
-      // Top gold bar
-      ctx.fillStyle = "rgba(220,170,40,0.9)"; ctx.fillRect(0, 0, width, 4);
-      ctx.fillStyle = "rgba(220,170,40,0.9)"; ctx.fillRect(0, height-4, width, 4);
+
+      // Subtle hellfire glow from bottom
+      const fireG = ctx.createRadialGradient(cx, height*1.1, 0, cx, height*0.7, width*0.75);
+      fireG.addColorStop(0, "rgba(200,60,8,0.18)"); fireG.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = fireG; ctx.fillRect(0, 0, width, height);
+
+      // Gold bars top/bottom
+      const gbar = (y) => {
+        const gl = ctx.createLinearGradient(0, 0, width, 0);
+        gl.addColorStop(0, "rgba(120,75,15,0)"); gl.addColorStop(0.15, "rgba(210,155,38,0.9)");
+        gl.addColorStop(0.5, "rgba(245,195,58,1)"); gl.addColorStop(0.85, "rgba(210,155,38,0.9)");
+        gl.addColorStop(1, "rgba(120,75,15,0)");
+        ctx.fillStyle = gl; ctx.fillRect(0, y, width, 4);
+      };
+      gbar(0); gbar(height - 4);
+
+      // Scan lines for atmosphere
+      ctx.save(); ctx.globalAlpha = 0.018; ctx.fillStyle = "#c87010";
+      for (let sl = 0; sl < height; sl += 4) ctx.fillRect(0, sl, width, 2);
+      ctx.restore();
 
       // Title
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       const isP2 = charSelectPhase === 1;
+      ctx.save();
+      ctx.shadowColor = "rgba(220,120,18,0.6)"; ctx.shadowBlur = 16;
       ctx.fillStyle = "#ffe060";
-      ctx.font = `bold ${Math.min(20, height*0.038)}px serif`;
-      ctx.fillText(isP2 ? "2P — 캐릭터 선택" : "1P — 캐릭터 선택", cx, height * 0.07);
-      ctx.fillStyle = "rgba(200,150,40,0.6)";
-      ctx.font = `${Math.min(12, height*0.022)}px monospace`;
-      ctx.fillText("FOR THE EMPEROR — SELECT YOUR CHAMPION", cx, height * 0.13);
+      ctx.font = `900 ${Math.min(22, Math.max(15, height*0.04))}px Arial Black, serif`;
+      ctx.fillText(isP2 ? "2P — SELECT YOUR CHAMPION" : "SELECT YOUR CHAMPION", cx, height * 0.07);
+      ctx.restore();
+      ctx.fillStyle = "rgba(190,140,35,0.65)";
+      ctx.font = `${Math.min(11, height*0.02)}px monospace`;
+      ctx.fillText("FOR THE EMPEROR  ·  ULTRAMARINES II COMPANY  ·  ASSAULT SQUAD", cx, height * 0.125);
+
+      // Separator
+      const sep = ctx.createLinearGradient(cx - width*0.4, 0, cx + width*0.4, 0);
+      sep.addColorStop(0, "rgba(200,140,30,0)"); sep.addColorStop(0.2, "rgba(200,140,30,0.7)");
+      sep.addColorStop(0.5, "rgba(240,190,50,1)"); sep.addColorStop(0.8, "rgba(200,140,30,0.7)");
+      sep.addColorStop(1, "rgba(200,140,30,0)");
+      ctx.strokeStyle = sep; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx - width*0.4, height*0.155); ctx.lineTo(cx + width*0.4, height*0.155); ctx.stroke();
 
       // 4 character cards
-      const cardW = Math.min(160, (width - 80) / 4 - 12);
-      const cardH = Math.min(240, height * 0.56);
-      const totalW = cardW * 4 + 36;
+      const gap = Math.min(14, width * 0.02);
+      const cardW = Math.min(170, Math.max(90, (width - 60 - gap * 3) / 4));
+      const cardH = Math.min(280, Math.max(160, height * 0.62));
+      const totalW = cardW * 4 + gap * 3;
       const startX = cx - totalW / 2;
-      const cardY = height * 0.19;
+      const cardY = height * 0.18;
       const selectedIdx = isP2 ? p2CharIdx : p1CharIdx;
 
       for (let i = 0; i < 4; i++) {
         const cd = CHAR_DEFS[i];
-        const cx2 = startX + i * (cardW + 12) + cardW / 2;
+        const cardX = startX + i * (cardW + gap);
+        const ccx = cardX + cardW / 2;
         const isSelected = selectedIdx === i;
-        const hover = Math.abs(now % 2 - 1) * 0.3;
+        const pulse = isSelected ? Math.abs(Math.sin(now * 2.5)) : 0;
 
-        // Card background
-        ctx.save();
+        // Card shadow
         if (isSelected) {
-          ctx.shadowColor = "rgba(220,180,40,0.8)"; ctx.shadowBlur = 20;
+          ctx.save();
+          ctx.shadowColor = cd.col.visor; ctx.shadowBlur = 28;
+          ctx.fillStyle = "rgba(0,0,0,0)";
+          roundRect(cardX - 2, cardY - 2, cardW + 4, cardH + 4, 8);
+          ctx.fill();
+          ctx.restore();
         }
-        ctx.beginPath();
-        ctx.roundRect(cx2 - cardW/2, cardY, cardW, cardH, 6);
-        const cardBg = ctx.createLinearGradient(cx2-cardW/2, cardY, cx2+cardW/2, cardY+cardH);
+
+        // Card background gradient
+        const cardBg = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
         if (isSelected) {
-          cardBg.addColorStop(0, "rgba(80,55,10,0.97)");
-          cardBg.addColorStop(1, "rgba(40,25,5,0.97)");
+          cardBg.addColorStop(0, "rgba(70,48,8,0.98)");
+          cardBg.addColorStop(0.5, "rgba(48,32,5,0.98)");
+          cardBg.addColorStop(1, "rgba(28,18,3,0.98)");
         } else {
-          cardBg.addColorStop(0, "rgba(30,20,8,0.9)");
-          cardBg.addColorStop(1, "rgba(15,10,3,0.9)");
+          cardBg.addColorStop(0, "rgba(22,14,4,0.94)");
+          cardBg.addColorStop(1, "rgba(12,7,2,0.94)");
         }
-        ctx.fillStyle = cardBg; ctx.fill();
-        ctx.strokeStyle = isSelected ? `rgba(255,200,40,${0.8+hover})` : "rgba(140,100,25,0.4)";
-        ctx.lineWidth = isSelected ? 2 : 1; ctx.stroke();
-        ctx.restore();
+        ctx.fillStyle = cardBg;
+        roundRect(cardX, cardY, cardW, cardH, 6);
+        ctx.fill();
 
-        // Character preview (drawn in card)
+        // Card border
+        const borderA = isSelected ? (0.7 + pulse * 0.3) : 0.28;
+        ctx.strokeStyle = isSelected ? `rgba(255,200,40,${borderA})` : "rgba(130,90,22,0.4)";
+        ctx.lineWidth = isSelected ? 2 : 1;
+        roundRect(cardX, cardY, cardW, cardH, 6);
+        ctx.stroke();
+
+        // Top accent strip in character's color
+        ctx.fillStyle = cd.col.visor.replace(")", ",0.7)").replace("rgb", "rgba").replace("#", "").length > 20
+          ? cd.col.visor : cd.col.visor;
         ctx.save();
-        ctx.translate(cx2, cardY + cardH * 0.32);
-        const charScale = Math.min(1.4, cardW / 120);
-        ctx.scale(charScale, charScale);
-        drawCharPreview(cd, isSelected);
+        ctx.globalAlpha = isSelected ? 0.85 : 0.4;
+        const accentColor = cd.col.visor;
+        ctx.fillStyle = accentColor;
+        ctx.fillRect(cardX + 2, cardY + 2, cardW - 4, 3);
         ctx.restore();
 
-        // Character name
+        // ── CHARACTER ART ──
+        ctx.save();
+        ctx.translate(ccx, cardY + cardH * 0.36);
+        const artScale = Math.min(2.2, cardW / 70);
+        ctx.scale(artScale, artScale);
+        drawCharPortrait(cd, isSelected, now);
+        ctx.restore();
+
+        // Diagonal cut divider line below art
+        ctx.save();
+        ctx.globalAlpha = isSelected ? 0.5 : 0.22;
+        ctx.strokeStyle = isSelected ? "rgba(220,170,40,0.8)" : "rgba(150,110,30,0.5)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cardX + 4, cardY + cardH * 0.59);
+        ctx.lineTo(cardX + cardW - 4, cardY + cardH * 0.59);
+        ctx.stroke();
+        ctx.restore();
+
+        // Name
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.font = `bold ${Math.min(13, cardW*0.09)}px serif`;
-        ctx.fillStyle = isSelected ? "#ffe870" : "rgba(200,160,50,0.85)";
-        if (isSelected) { ctx.shadowColor="rgba(255,180,40,0.8)"; ctx.shadowBlur=8; }
-        ctx.fillText(cd.name, cx2, cardY + cardH * 0.65);
-        ctx.shadowBlur = 0;
+        ctx.save();
+        if (isSelected) { ctx.shadowColor = "rgba(255,200,40,0.9)"; ctx.shadowBlur = 10; }
+        ctx.fillStyle = isSelected ? "#fff080" : "rgba(210,165,55,0.88)";
+        ctx.font = `900 ${Math.min(14, Math.max(9, cardW*0.09))}px Arial Black, serif`;
+        ctx.fillText(cd.name, ccx, cardY + cardH * 0.635);
+        ctx.restore();
 
         // Sub-title
-        ctx.font = `${Math.min(9, cardW*0.065)}px monospace`;
-        ctx.fillStyle = isSelected ? "rgba(255,220,100,0.9)" : "rgba(180,130,40,0.65)";
-        ctx.fillText(cd.sub, cx2, cardY + cardH * 0.73);
+        ctx.font = `${Math.min(9, Math.max(7, cardW*0.058))}px monospace`;
+        ctx.fillStyle = isSelected ? "rgba(240,210,90,0.85)" : "rgba(170,120,35,0.65)";
+        ctx.fillText(cd.sub, ccx, cardY + cardH * 0.695);
 
-        // Stats bar area
-        const statY = cardY + cardH * 0.79;
-        const bw = cardW * 0.72, bh = 5, bx = cx2 - bw/2;
-        const labelColor = isSelected ? "rgba(220,180,60,0.9)" : "rgba(160,120,35,0.7)";
-        ctx.font = `${Math.min(8, cardW*0.057)}px monospace`;
+        // Stats bars
+        const statY = cardY + cardH * 0.745;
+        const bw = cardW * 0.76, bh = 5, bx = ccx - bw / 2;
+        const lc = isSelected ? "rgba(230,185,65,0.9)" : "rgba(155,115,35,0.7)";
+        ctx.font = `${Math.min(8, Math.max(6, cardW*0.052))}px monospace`;
         ctx.textAlign = "left";
-        // Speed bar
-        ctx.fillStyle = labelColor; ctx.fillText("SPD", bx, statY - 1);
-        ctx.fillStyle = "rgba(40,30,10,0.8)"; ctx.fillRect(bx+22, statY-4, bw-22, bh);
-        ctx.fillStyle = isSelected ? "#60c860":"rgba(60,140,60,0.7)";
-        ctx.fillRect(bx+22, statY-4, (bw-22)*Math.min(1, cd.speedMult/1.3), bh);
-        // HP bar
-        ctx.fillStyle = labelColor; ctx.fillText("HP", bx, statY+9);
-        ctx.fillStyle = "rgba(40,30,10,0.8)"; ctx.fillRect(bx+22, statY+5, bw-22, bh);
-        ctx.fillStyle = isSelected ? "#c84040":"rgba(140,40,40,0.7)";
-        ctx.fillRect(bx+22, statY+5, (bw-22)*Math.min(1, cd.hpMult/1.4), bh);
 
-        // Trait tag
+        ctx.fillStyle = lc; ctx.fillText("SPD", bx, statY + 3);
+        ctx.fillStyle = "rgba(8,5,1,0.9)"; ctx.fillRect(bx + 24, statY - 2, bw - 24, bh);
+        const spdG = ctx.createLinearGradient(bx+24, 0, bx+24+(bw-24), 0);
+        spdG.addColorStop(0, isSelected ? "#44dd44" : "rgba(50,130,50,0.7)");
+        spdG.addColorStop(1, isSelected ? "#88ff88" : "rgba(80,180,80,0.6)");
+        ctx.fillStyle = spdG;
+        ctx.fillRect(bx + 24, statY - 2, (bw - 24) * Math.min(1, cd.speedMult / 1.3), bh);
+
+        ctx.fillStyle = lc; ctx.fillText("HP", bx, statY + 17);
+        ctx.fillStyle = "rgba(8,5,1,0.9)"; ctx.fillRect(bx + 24, statY + 12, bw - 24, bh);
+        const hpG = ctx.createLinearGradient(bx+24, 0, bx+24+(bw-24), 0);
+        hpG.addColorStop(0, isSelected ? "#cc2222" : "rgba(130,35,35,0.7)");
+        hpG.addColorStop(1, isSelected ? "#ff6666" : "rgba(180,60,60,0.6)");
+        ctx.fillStyle = hpG;
+        ctx.fillRect(bx + 24, statY + 12, (bw - 24) * Math.min(1, cd.hpMult / 1.4), bh);
+
+        // Trait badge
         ctx.textAlign = "center";
-        const tagText = cd.gender === "female" ? "♀ 힐링" : cd.build === "heavy" ? "♂ 중장갑" : cd.build === "slim" ? "♂ 고속" : "♂ 균형";
-        ctx.font = `${Math.min(8,cardW*0.055)}px monospace`;
-        ctx.fillStyle = cd.gender === "female" ? "rgba(255,160,220,0.85)" : cd.build === "heavy" ? "rgba(255,130,50,0.85)" : "rgba(100,220,255,0.85)";
-        ctx.fillText(tagText, cx2, cardY + cardH * 0.95);
+        const traitMap = { female: ["♀ MEDIC", "rgba(255,140,220,0.9)"], heavy: ["⬛ HEAVY", "rgba(255,110,40,0.9)"], slim: ["◈ SCOUT", "rgba(80,210,255,0.9)"] };
+        const [traitLabel, traitColor] = traitMap[cd.gender === "female" ? "female" : cd.build] || ["◈ BALANCED", "rgba(180,230,90,0.9)"];
+        ctx.font = `bold ${Math.min(8, Math.max(6, cardW*0.052))}px monospace`;
+        ctx.fillStyle = isSelected ? traitColor : traitColor.replace("0.9)", "0.55)");
+        ctx.fillText(traitLabel, ccx, cardY + cardH * 0.915);
 
-        // Selection highlight at bottom
+        // Weapon label
+        const weapLabels = { 0: "BOLTER", 1: "STORM BOLTER", 5: "SNIPER RIFLE" };
+        ctx.font = `${Math.min(7, Math.max(5, cardW*0.045))}px monospace`;
+        ctx.fillStyle = isSelected ? "rgba(255,220,100,0.75)" : "rgba(160,120,40,0.5)";
+        ctx.fillText(weapLabels[cd.primaryW] || "BOLTER", ccx, cardY + cardH * 0.965);
+
+        // Selection bottom bar
         if (isSelected) {
-          ctx.fillStyle = "rgba(255,200,40,0.85)";
-          ctx.fillRect(cx2 - cardW/2 + 8, cardY + cardH - 10, cardW - 16, 3);
+          const selG = ctx.createLinearGradient(cardX, 0, cardX + cardW, 0);
+          selG.addColorStop(0, "rgba(255,200,40,0)"); selG.addColorStop(0.2, "rgba(255,200,40,0.9)");
+          selG.addColorStop(0.8, "rgba(255,200,40,0.9)"); selG.addColorStop(1, "rgba(255,200,40,0)");
+          ctx.fillStyle = selG;
+          ctx.fillRect(cardX + 6, cardY + cardH - 5, cardW - 12, 3);
         }
       }
 
-      // Instruction
+      // Instruction text
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillStyle = `rgba(220,180,50,${0.6 + Math.abs(Math.sin(now*2))*0.35})`;
-      ctx.font = `bold ${Math.min(12, height*0.022)}px monospace`;
+      ctx.fillStyle = `rgba(220,175,50,${0.55 + Math.abs(Math.sin(now*2.2))*0.4})`;
+      ctx.font = `bold ${Math.min(12, Math.max(9, height*0.022))}px monospace`;
       const hint = (isP2 ? p2CharIdx : p1CharIdx) === -1
-        ? "캐릭터 카드를 탭하여 선택하세요"
+        ? "캐릭터 카드를 탭하여 선택  ·  TAP TO SELECT"
         : "한 번 더 탭하면 확정  ◈  다른 카드 탭하면 변경";
-      ctx.fillText(hint, cx, height * 0.92);
+      ctx.fillText(hint, cx, height * 0.929);
+
+      // Gothic corner brackets
+      ctx.strokeStyle = "rgba(200,148,38,0.65)"; ctx.lineWidth = 2;
+      const bS = 22;
+      [[10,10],[width-10-bS,10],[10,height-10-bS],[width-10-bS,height-10-bS]].forEach(([bx,by],i)=>{
+        const sx=i%2===0?1:-1,sy=i<2?1:-1;
+        ctx.beginPath(); ctx.moveTo(bx+bS*sx,by); ctx.lineTo(bx,by); ctx.lineTo(bx,by+bS*sy); ctx.stroke();
+      });
 
       // Back button
-      ctx.fillStyle = "rgba(20,14,4,0.88)";
-      const backR = { x: 14, y: 12, w: 80, h: 26 };
-      ctx.fillRect(backR.x, backR.y, backR.w, backR.h);
-      ctx.strokeStyle = "rgba(160,120,30,0.6)"; ctx.lineWidth = 1; ctx.strokeRect(backR.x, backR.y, backR.w, backR.h);
-      ctx.fillStyle = "rgba(200,155,45,0.8)"; ctx.font = "bold 10px monospace";
-      ctx.textAlign = "center"; ctx.fillText("◄ BACK", backR.x + backR.w/2, backR.y + backR.h/2 + 1);
+      ctx.save();
+      ctx.fillStyle = "rgba(18,12,3,0.92)"; ctx.fillRect(12, 10, 82, 28);
+      ctx.strokeStyle = "rgba(170,125,30,0.65)"; ctx.lineWidth = 1; ctx.strokeRect(12, 10, 82, 28);
+      ctx.fillStyle = "rgba(210,158,45,0.85)"; ctx.font = "bold 10px monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("◄ BACK", 53, 24);
+      ctx.restore();
     }
 
-    function drawCharPreview(cd, isSelected) {
-      const now = performance.now() * 0.001;
-      const r = 26;
-      const col = cd.col;
-      const float = Math.sin(now * 1.8 + cd.id) * 3;
+    function drawCharPortrait(cd, isSelected, now) {
+      const float = Math.sin(now * 1.6 + cd.id * 1.3) * 2.5;
       ctx.save();
       ctx.translate(0, float);
 
-      // Glow ring for selected
+      // Glow aura for selected
       if (isSelected) {
-        ctx.beginPath(); ctx.arc(0, 0, r * 1.5, 0, Math.PI*2);
-        const gl = ctx.createRadialGradient(0,0,r*0.8,0,0,r*1.5);
-        gl.addColorStop(0, "rgba(255,190,40,0.25)"); gl.addColorStop(1, "rgba(255,190,40,0)");
-        ctx.fillStyle = gl; ctx.fill();
+        ctx.save();
+        const glR = ctx.createRadialGradient(0, 0, 10, 0, 0, 38);
+        glR.addColorStop(0, cd.col.visor.includes("#") ? cd.col.visor + "44" : "rgba(255,180,40,0.22)");
+        glR.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = glR;
+        ctx.beginPath(); ctx.ellipse(0, 0, 38, 38, 0, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
       }
 
-      // Shadow
-      ctx.save(); ctx.globalAlpha = 0.3;
-      ctx.fillStyle = "#000"; ctx.beginPath(); ctx.ellipse(0, r*0.92, r*0.6, r*0.15, 0, 0, Math.PI*2); ctx.fill();
+      // Ground shadow
+      ctx.save(); ctx.globalAlpha = 0.25;
+      ctx.fillStyle = "#000";
+      ctx.beginPath(); ctx.ellipse(0, 30, 18, 5, 0, 0, Math.PI*2); ctx.fill();
       ctx.restore();
 
-      // Body torso
-      ctx.fillStyle = col.body;
-      ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = 1.5;
-      if (cd.build === "heavy") {
-        ctx.beginPath(); ctx.ellipse(0, 0, r*0.62, r*0.55, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-      } else if (cd.build === "slim") {
-        ctx.beginPath(); ctx.ellipse(0, 0, r*0.44, r*0.52, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-      } else {
-        ctx.beginPath(); ctx.ellipse(0, 0, r*0.52, r*0.52, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-      }
+      if (cd.id === 0) drawHawkPortrait(cd, isSelected, now);
+      else if (cd.id === 1) drawBullPortrait(cd, isSelected, now);
+      else if (cd.id === 2) drawViperPortrait(cd, isSelected, now);
+      else if (cd.id === 3) drawMedicPortrait(cd, isSelected, now);
 
-      // Chest highlight
-      const chG = ctx.createLinearGradient(-r*0.3, -r*0.3, r*0.1, r*0.1);
-      chG.addColorStop(0, col.light); chG.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = chG;
-      ctx.beginPath(); ctx.ellipse(-r*0.1, -r*0.08, r*0.28, r*0.24, -0.3, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
 
-      // Shoulder pads
-      ctx.fillStyle = col.shoulder; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 1;
-      const shW = cd.build === "heavy" ? r*0.32 : r*0.26;
-      const shH = cd.build === "heavy" ? r*0.18 : r*0.14;
-      ctx.beginPath(); ctx.ellipse(-r*(cd.build==="heavy"?0.54:0.44), -r*0.12, shW, shH, -0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.ellipse( r*(cd.build==="heavy"?0.54:0.44), -r*0.12, shW, shH,  0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-
+    // HAWK — Ultramarine Space Marine, balanced assault
+    function drawHawkPortrait(cd, isSel, now) {
+      const c = cd.col;
+      // Legs
+      ctx.fillStyle = c.body; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-8,8); ctx.lineTo(-10,28); ctx.lineTo(-5,28); ctx.lineTo(-4,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(4,8); ctx.lineTo(3,28); ctx.lineTo(8,28); ctx.lineTo(10,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Knee pads
+      ctx.fillStyle = c.shoulder;
+      ctx.beginPath(); ctx.ellipse(-7, 19, 4, 3, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(7, 19, 4, 3, 0, 0, Math.PI*2); ctx.fill();
+      // Torso
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.moveTo(-13,-2); ctx.lineTo(-11,10); ctx.lineTo(11,10); ctx.lineTo(13,-2); ctx.lineTo(10,-12); ctx.lineTo(-10,-12); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Chest eagle detail
+      ctx.fillStyle = c.shoulder;
+      ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(-6,-4); ctx.lineTo(-3,-2); ctx.lineTo(0,-5); ctx.lineTo(3,-2); ctx.lineTo(6,-4); ctx.closePath(); ctx.fill();
+      // Power pack (backpack) hint — visible as slight lump on right
+      ctx.fillStyle = c.light; ctx.globalAlpha = 0.6;
+      ctx.beginPath(); ctx.ellipse(14, -2, 4, 8, 0.3, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+      // Left arm with bolter
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.moveTo(-13,-2); ctx.lineTo(-22,-1); ctx.lineTo(-20,9); ctx.lineTo(-11,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Right arm raised
+      ctx.beginPath(); ctx.moveTo(13,-2); ctx.lineTo(20,-6); ctx.lineTo(18,4); ctx.lineTo(11,6); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Shoulder pauldrons
+      ctx.fillStyle = c.shoulder;
+      ctx.beginPath(); ctx.ellipse(-14,-4, 7, 5, -0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(14,-4, 7, 5, 0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      // Pauldron U emblem
+      ctx.fillStyle = "#fff8"; ctx.font = "bold 5px serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("U", -14, -4);
+      // Bolter gun in left hand
+      ctx.fillStyle = "#2a2a2a"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-22,-3); ctx.lineTo(-30,-3); ctx.lineTo(-30,3); ctx.lineTo(-22,5); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#555"; ctx.fillRect(-28, -1, 4, 2);
       // Helmet
-      const hr = cd.build === "slim" ? r*0.34 : r*0.38;
-      const hx = 0, hy = -r*(cd.build==="heavy"?0.62:0.58);
-      ctx.fillStyle = col.body; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(hx, hy, hr, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = c.body; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, -20, 12, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      // Helmet top ridge
+      ctx.fillStyle = c.shoulder;
+      ctx.beginPath(); ctx.moveTo(-4,-30); ctx.lineTo(-2,-20); ctx.lineTo(2,-20); ctx.lineTo(4,-30); ctx.lineTo(0,-32); ctx.closePath(); ctx.fill();
+      // Visor T-bar
+      ctx.fillStyle = c.visor;
+      ctx.shadowColor = c.visor; ctx.shadowBlur = isSel ? 10 : 5;
+      ctx.beginPath(); ctx.moveTo(-9,-21); ctx.lineTo(9,-21); ctx.lineTo(9,-18); ctx.lineTo(-9,-18); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-3,-18); ctx.lineTo(3,-18); ctx.lineTo(3,-13); ctx.lineTo(-3,-13); ctx.closePath(); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
 
-      // Visor
-      ctx.fillStyle = col.visor;
-      ctx.shadowColor = col.visor; ctx.shadowBlur = isSelected ? 8 : 4;
+    // BULL — Terminator heavy, slow brute
+    function drawBullPortrait(cd, isSel, now) {
+      const c = cd.col;
+      // WIDE legs (terminator stubs)
+      ctx.fillStyle = c.body; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-10,8); ctx.lineTo(-14,26); ctx.lineTo(-6,26); ctx.lineTo(-5,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(5,8); ctx.lineTo(4,26); ctx.lineTo(12,26); ctx.lineTo(16,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Shin guards
+      ctx.fillStyle = c.light;
+      ctx.fillRect(-14,18,8,8); ctx.fillRect(6,18,8,8);
+      ctx.strokeStyle = "#000"; ctx.lineWidth = 0.8;
+      ctx.strokeRect(-14,18,8,8); ctx.strokeRect(6,18,8,8);
+      // VERY wide torso (terminator bulk)
+      ctx.fillStyle = c.body; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-18,-4); ctx.lineTo(-16,10); ctx.lineTo(16,10); ctx.lineTo(18,-4); ctx.lineTo(14,-14); ctx.lineTo(-14,-14); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Torso center line / chest plate
+      ctx.fillStyle = c.light;
+      ctx.beginPath(); ctx.moveTo(-5,-12); ctx.lineTo(-5,8); ctx.lineTo(5,8); ctx.lineTo(5,-12); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle="#000"; ctx.lineWidth=0.8; ctx.strokeRect(-5,-12,10,20);
+      // Arms — HUGE
+      ctx.fillStyle = c.body; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-18,-4); ctx.lineTo(-28,-2); ctx.lineTo(-28,10); ctx.lineTo(-16,10); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(18,-4); ctx.lineTo(28,-2); ctx.lineTo(28,10); ctx.lineTo(16,10); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // MASSIVE shoulder pads (terminator style)
+      ctx.fillStyle = c.shoulder;
+      ctx.beginPath(); ctx.ellipse(-20,-5, 10, 7, -0.2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(20,-5, 10, 7, 0.2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      // Skull icon on right pad
+      ctx.fillStyle = "rgba(255,50,0,0.8)"; ctx.font = "bold 7px serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("☠", 20, -5);
+      // Double barrel shotgun in right hand
+      ctx.fillStyle = "#1a1a1a"; ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(28,-1); ctx.lineTo(38,-1); ctx.lineTo(38,5); ctx.lineTo(28,5); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#333"; ctx.fillRect(29,0,7,1.5); ctx.fillRect(29,2.5,7,1.5);
+      // Helmet — terminator boxy
+      ctx.fillStyle = c.body; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-13,-14); ctx.lineTo(-14,-26); ctx.lineTo(14,-26); ctx.lineTo(13,-14); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Helmet top spike
+      ctx.fillStyle = c.shoulder;
+      ctx.beginPath(); ctx.moveTo(-2,-26); ctx.lineTo(0,-34); ctx.lineTo(2,-26); ctx.closePath(); ctx.fill();
+      // Visor — narrow brutal slit
+      ctx.fillStyle = c.visor;
+      ctx.shadowColor = c.visor; ctx.shadowBlur = isSel ? 12 : 5;
+      ctx.fillRect(-10,-22, 20, 4);
+      ctx.shadowBlur = 0;
+      // Nose vent
+      ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(-2,-17,4,3);
+    }
+
+    // VIPER — Scout sniper, slim and fast
+    function drawViperPortrait(cd, isSel, now) {
+      const c = cd.col;
+      // Slim legs
+      ctx.fillStyle = c.body; ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-6,8); ctx.lineTo(-7,28); ctx.lineTo(-3,28); ctx.lineTo(-3,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(3,8); ctx.lineTo(3,28); ctx.lineTo(7,28); ctx.lineTo(6,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Torso — slim
+      ctx.fillStyle = c.body; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-9,-2); ctx.lineTo(-8,10); ctx.lineTo(8,10); ctx.lineTo(9,-2); ctx.lineTo(7,-11); ctx.lineTo(-7,-11); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Chest camo dashes
+      ctx.fillStyle = "rgba(0,80,0,0.5)";
+      ctx.fillRect(-6,-8,3,2); ctx.fillRect(-1,-6,4,2); ctx.fillRect(2,-9,3,2);
+      // Arms — lean
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.moveTo(-9,-2); ctx.lineTo(-16,-5); ctx.lineTo(-15,5); ctx.lineTo(-8,6); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(9,-2); ctx.lineTo(17,-8); ctx.lineTo(18,2); ctx.lineTo(10,5); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Slim shoulder pads
+      ctx.fillStyle = c.shoulder; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.ellipse(-11,-4, 5, 3.5, -0.4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(11,-4, 5, 3.5, 0.4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      // Long sniper rifle (diagonal, distinctive)
+      ctx.save();
+      ctx.translate(10, -2); ctx.rotate(-0.35);
+      ctx.fillStyle = "#1c1c1c"; ctx.strokeStyle = "#000"; ctx.lineWidth = 0.8;
+      ctx.fillRect(0,-2,34,4); ctx.stroke(); ctx.strokeRect(0,-2,34,4);
+      // Scope
+      ctx.fillStyle = "#333"; ctx.beginPath(); ctx.arc(22,0,3,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#666"; ctx.beginPath(); ctx.arc(22,0,1.5,0,Math.PI*2); ctx.fill();
+      // Barrel
+      ctx.fillStyle = "#444"; ctx.fillRect(32,-1.2,6,2.4);
+      ctx.restore();
+      // Scout helmet — sleeker
+      ctx.fillStyle = c.body; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.arc(0,-20, 10, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      // Helmet ear comm
+      ctx.fillStyle = c.shoulder;
+      ctx.beginPath(); ctx.arc(-10,-20,3,0,Math.PI*2); ctx.fill();
+      // Visor — single full visor
+      ctx.fillStyle = c.visor;
+      ctx.shadowColor = c.visor; ctx.shadowBlur = isSel ? 10 : 4;
+      ctx.beginPath(); ctx.ellipse(0,-19, 8, 4, 0, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur = 0;
+      // Helmet chin guard
+      ctx.fillStyle = c.body; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(-5,-13); ctx.lineTo(-4,-10); ctx.lineTo(4,-10); ctx.lineTo(5,-13); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+
+    // MEDIC — Female Apothecary, healer
+    function drawMedicPortrait(cd, isSel, now) {
+      const c = cd.col;
+      // Slim feminine legs
+      ctx.fillStyle = c.body; ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-5,8); ctx.lineTo(-6,27); ctx.lineTo(-2,27); ctx.lineTo(-2,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(2,8); ctx.lineTo(2,27); ctx.lineTo(6,27); ctx.lineTo(5,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // White boot caps
+      ctx.fillStyle = "#eee"; ctx.fillRect(-7,23,5,4); ctx.fillRect(2,23,5,4);
+      // Torso with slight feminine taper
+      ctx.fillStyle = c.body; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-9,0); ctx.lineTo(-8,10); ctx.lineTo(8,10); ctx.lineTo(9,0); ctx.lineTo(7,-10); ctx.lineTo(-7,-10); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // White chest plate
+      ctx.fillStyle = "rgba(240,240,255,0.85)";
+      ctx.beginPath(); ctx.moveTo(-5,-8); ctx.lineTo(-5,8); ctx.lineTo(5,8); ctx.lineTo(5,-8); ctx.closePath(); ctx.fill();
+      // RED cross on white chest plate
+      ctx.fillStyle = "#ee2222";
+      ctx.fillRect(-1,-7,2,14); ctx.fillRect(-5,-2,10,2);
+      // Medical injector in right hand
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.moveTo(9,0); ctx.lineTo(18,-3); ctx.lineTo(18,6); ctx.lineTo(9,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Med injector device
+      ctx.fillStyle = "#e8f8ff"; ctx.strokeStyle="#888"; ctx.lineWidth=0.8;
+      ctx.beginPath(); ctx.moveTo(18,-2); ctx.lineTo(28,-2); ctx.lineTo(28,4); ctx.lineTo(18,4); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "rgba(220,50,50,0.8)"; ctx.fillRect(20,-1,3,4);
+      ctx.fillStyle = "#aaa"; ctx.fillRect(26,0,4,2);
+      // Left arm with pistol
+      ctx.fillStyle = c.body;
+      ctx.beginPath(); ctx.moveTo(-9,0); ctx.lineTo(-17,-2); ctx.lineTo(-16,6); ctx.lineTo(-8,7); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#2a2a2a"; ctx.strokeStyle="#000";
+      ctx.beginPath(); ctx.moveTo(-17,-1); ctx.lineTo(-25,-1); ctx.lineTo(-25,4); ctx.lineTo(-17,4); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Shoulder pads — smaller, with red cross
+      ctx.fillStyle = c.shoulder; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.ellipse(-11,-4,5,3.5,-0.2,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(11,-4,5,3.5,0.2,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#ee2222"; ctx.font = "bold 5px serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("+", 11,-4);
+      // Helmet — slightly slim
+      ctx.fillStyle = c.body; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.arc(0,-20,10,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      // White stripe on helmet
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.beginPath(); ctx.moveTo(-3,-30); ctx.lineTo(-2,-20); ctx.lineTo(2,-20); ctx.lineTo(3,-30); ctx.lineTo(0,-31); ctx.closePath(); ctx.fill();
+      // Visor — pink glow
+      ctx.fillStyle = c.visor;
+      ctx.shadowColor = c.visor; ctx.shadowBlur = isSel ? 12 : 5;
       ctx.beginPath();
-      ctx.arc(hx, hy + hr*0.08, hr*0.68, Math.PI*0.72, Math.PI*0.28, true);
-      ctx.arc(hx, hy + hr*0.08, hr*0.36, Math.PI*0.28, Math.PI*0.72);
+      ctx.arc(0,-19+1.5, 8*0.85, Math.PI*0.7, Math.PI*0.3, true);
+      ctx.arc(0,-19+1.5, 8*0.45, Math.PI*0.3, Math.PI*0.7);
       ctx.closePath(); ctx.fill();
       ctx.shadowBlur = 0;
-
-      // Female character: white cross on chest
-      if (cd.gender === "female") {
-        ctx.fillStyle = "rgba(255,255,255,0.85)";
-        ctx.fillRect(-r*0.04, -r*0.22, r*0.08, r*0.25);
-        ctx.fillRect(-r*0.14, -r*0.15, r*0.28, r*0.08);
+      // Heal aura effect when selected
+      if (isSel) {
+        ctx.save();
+        ctx.globalAlpha = 0.18 + Math.sin(now*3)*0.08;
+        const auraG = ctx.createRadialGradient(0,-5,5,0,-5,30);
+        auraG.addColorStop(0,"rgba(200,100,255,0.4)"); auraG.addColorStop(1,"rgba(200,100,255,0)");
+        ctx.fillStyle = auraG;
+        ctx.beginPath(); ctx.ellipse(0,-5,30,30,0,0,Math.PI*2); ctx.fill();
+        ctx.restore();
       }
-
-      // Weapon hint icon
-      const wIcon = cd.primaryW === 5 ? "▬▬▬▬" : cd.primaryW === 1 ? "▐▌▐" : "▬▬";
-      ctx.fillStyle = "rgba(200,160,50,0.75)"; ctx.font = `bold ${r*0.28}px monospace`;
-      ctx.textAlign = "center"; ctx.fillText(wIcon, r*0.55, r*0.12);
-
-      ctx.restore();
     }
 
     function drawMenu() {

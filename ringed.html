@@ -1303,7 +1303,7 @@
           const spread = p * 0.12 + (Math.random() - 0.5) * 0.06;
           const pdx = Math.cos(player.angle + spread);
           const pdy = Math.sin(player.angle + spread);
-          const hit = raycastShot(sx, sy, pdx, pdy, 500);
+          const hit = raycastShot(sx, sy, pdx, pdy, 250);
           tracers.push({ x1: sx, y1: sy, x2: hit.x, y2: hit.y, life: 0.07, maxLife: 0.07 });
           if (hit.enemy) { hit.enemy.hp -= 57; burst(hit.x, hit.y, "#9f2a24", 4); skillEnergy = Math.min(1, skillEnergy + 0.125); }
           else if (hit.solid) { burst(hit.x, hit.y, "#f4efe8", 3); hitWallCorner(hit.x, hit.y, 1.0, 40); }
@@ -1339,7 +1339,7 @@
         shootCooldown = 0.3;
         playSfx("playerGun", 0.72 + Math.random() * 0.06);
         const bspeed = 420;
-        taserBullets.push({ x: sx, y: sy, vx: dx * bspeed, vy: dy * bspeed, life: 1.4, r: 6 });
+        taserBullets.push({ x: sx, y: sy, vx: dx * bspeed, vy: dy * bspeed, life: 0.7, r: 6 });
         for (let i = 0; i < 3; i++) {
           particles.push({ x: sx, y: sy,
             vx: Math.cos(player.angle + (Math.random() - 0.5) * 0.5) * (60 + Math.random() * 100),

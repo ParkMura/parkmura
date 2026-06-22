@@ -2683,10 +2683,10 @@
     function mobileAimWorldTarget() {
       if (mobileControls.shoot && mobileControls.aimDeflection > 0) {
         const inv = currentWeapon === 5 && playerChar && playerChar.id === 2;
-        const scopeMult = inv ? 1.3 : 1;
+        const scopeMult = inv ? 1.04 : 1;
         const maxWorldRadius = Math.min(width, height) * 0.38 / camera.zoom * scopeMult;
-        const dx = inv ? -mobileControls.aimDirX : mobileControls.aimDirX;
-        const dy = inv ? -mobileControls.aimDirY : mobileControls.aimDirY;
+        const dx = mobileControls.aimDirX;
+        const dy = mobileControls.aimDirY;
         return {
           x: player.x + dx * mobileControls.aimDeflection * maxWorldRadius,
           y: player.y + dy * mobileControls.aimDeflection * maxWorldRadius
@@ -6062,10 +6062,10 @@
       let wx, wy;
       const isVIPERSniper = currentWeapon === 5 && playerChar && playerChar.id === 2;
       if (mobileControls.shoot && mobileControls.aimDeflection > 0) {
-        const scopeMult = isVIPERSniper ? 4 : 1;
+        const scopeMult = isVIPERSniper ? 1.04 : 1;
         const maxWorldRadius = Math.min(width, height) * 0.38 / camera.zoom * scopeMult;
-        const dx = isVIPERSniper ? -mobileControls.aimDirX : mobileControls.aimDirX;
-        const dy = isVIPERSniper ? -mobileControls.aimDirY : mobileControls.aimDirY;
+        const dx = mobileControls.aimDirX;
+        const dy = mobileControls.aimDirY;
         wx = player.x + dx * mobileControls.aimDeflection * maxWorldRadius;
         wy = player.y + dy * mobileControls.aimDeflection * maxWorldRadius;
       } else {
@@ -7073,9 +7073,9 @@
         // 저격총 (VIPER weapon 5): AIM 손 뗄 때 발사, 반전 과녁 위치 기준 정확도 데미지
         if (currentWeapon === 5 && playerChar && playerChar.id === 2 &&
             mobileControls.shoot && mobileControls.aimDeflection > 0 && state === "play") {
-          const maxWorldRadius = Math.min(width, height) * 0.38 / camera.zoom * 1.3;
-          const tx = player.x + (-mobileControls.aimDirX) * mobileControls.aimDeflection * maxWorldRadius;
-          const ty = player.y + (-mobileControls.aimDirY) * mobileControls.aimDeflection * maxWorldRadius;
+          const maxWorldRadius = Math.min(width, height) * 0.38 / camera.zoom * 1.04;
+          const tx = player.x + mobileControls.aimDirX * mobileControls.aimDeflection * maxWorldRadius;
+          const ty = player.y + mobileControls.aimDirY * mobileControls.aimDeflection * maxWorldRadius;
           fireSniperAt(tx, ty);
         }
         // 폭탄 무기: AIM 손 뗄 때 투척

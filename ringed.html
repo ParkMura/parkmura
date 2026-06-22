@@ -102,6 +102,15 @@
     let autoGatling = false;   // 자동 개틀링 모드
     let autoGatlingCooldown = 0;
     let recoilAmt = 0;         // 반동 애니메이션 강도 (0~1)
+    // 탄약 시스템
+    const RIFLE_MAX_AMMO = 35, RIFLE_RELOAD_TIME = 1.5;
+    const SHOTGUN_MAX_AMMO = 2, SHOTGUN_RELOAD_TIME = 1.0;
+    const TASER_MAX_AMMO = 5, TASER_RELOAD_TIME = 1.5;
+    let rifleAmmo = RIFLE_MAX_AMMO, rifleReloadTimer = 0;
+    let shotgunAmmo = SHOTGUN_MAX_AMMO, shotgunReloadTimer = 0;
+    let taserAmmo = TASER_MAX_AMMO, taserReloadTimer = 0;
+    // 벽 코너 파손
+    const wallCornerDmg = new WeakMap();
     // 멀티플레이어
     const mp = {
       role: null, peer: null, conn: null, roomCode: null,
@@ -829,6 +838,9 @@
       autoGatling = false;
       autoGatlingCooldown = 0;
       recoilAmt = 0;
+      rifleAmmo = RIFLE_MAX_AMMO; rifleReloadTimer = 0;
+      shotgunAmmo = SHOTGUN_MAX_AMMO; shotgunReloadTimer = 0;
+      taserAmmo = TASER_MAX_AMMO; taserReloadTimer = 0;
       taserBullets.length = 0;
       wave = 1;
       spawnTimer = 0;
@@ -1258,13 +1270,17 @@
       const sy = player.y + dy * 34;
 
       if (currentWeapon === 0) {
-        // 소총 - 단발 레이캐스트, 데미지 44
+        // 소총 - 단발 레이캐스트, 데미지 44, 35발 / 1.5초 재장전
+        if (rifleReloadTimer > 0) return;
+        if (rifleAmmo <= 0) { rifleReloadTimer = RIFLE_RELOAD_TIME; return; }
+        rifleAmmo--;
+        if (rifleAmmo <= 0) rifleReloadTimer = RIFLE_RELOAD_TIME;
         shootCooldown = 0.11;
         playSfx("playerGun", 0.94 + Math.random() * 0.08);
         const hit = raycastShot(sx, sy, dx, dy, 980);
         tracers.push({ x1: sx, y1: sy, x2: hit.x, y2: hit.y, life: 0.09, maxLife: 0.09 });
-        if (hit.enemy) { hit.enemy.hp -= 44; burst(hit.x, hit.y, "#9f2a24", 5); }
-        else if (hit.solid) burst(hit.x, hit.y, "#f4efe8", 5);
+        if (hit.enemy) { hit.enemy.hp -= 44; burst(hit.x, hit.y, "#9f2a24", 5); skillEnergy = Math.min(1, skillEnergy + 0.125); }
+        else if (hit.solid) { burst(hit.x, hit.y, "#f4efe8", 5); hitWallCorner(hit.x, hit.y, 0.25, 28); }
         flashes.push({ x: sx + dx * 18, y: sy + dy * 18, angle: player.angle, life: 0.075, maxLife: 0.075 });
         for (let i = 0; i < 4; i++) {
           particles.push({ x: sx, y: sy,
@@ -1275,17 +1291,35 @@
         shake = Math.max(shake, 4); recoilAmt = 1.0;
 
       } else if (currentWeapon === 1) {
-        // 산탄총 - 5발 산탄, 데미지 57 (+30%), 사거리 500, 쿨다운 0.55s
+        // 산탄총 - 5발 산탄, 데미지 57, 피해반경 55px, 2발 / 1초 재장전
+        if (shotgunReloadTimer > 0) return;
+        if (shotgunAmmo <= 0) { shotgunReloadTimer = SHOTGUN_RELOAD_TIME; return; }
+        shotgunAmmo--;
+        if (shotgunAmmo <= 0) shotgunReloadTimer = SHOTGUN_RELOAD_TIME;
         shootCooldown = 0.55;
         playSfx("playerGun", 0.82 + Math.random() * 0.08);
+        const splashHits = [];
         for (let p = -2; p <= 2; p++) {
           const spread = p * 0.12 + (Math.random() - 0.5) * 0.06;
           const pdx = Math.cos(player.angle + spread);
           const pdy = Math.sin(player.angle + spread);
           const hit = raycastShot(sx, sy, pdx, pdy, 500);
           tracers.push({ x1: sx, y1: sy, x2: hit.x, y2: hit.y, life: 0.07, maxLife: 0.07 });
-          if (hit.enemy) { hit.enemy.hp -= 57; burst(hit.x, hit.y, "#9f2a24", 4); }
-          else if (hit.solid) burst(hit.x, hit.y, "#f4efe8", 3);
+          if (hit.enemy) { hit.enemy.hp -= 57; burst(hit.x, hit.y, "#9f2a24", 4); skillEnergy = Math.min(1, skillEnergy + 0.125); }
+          else if (hit.solid) { burst(hit.x, hit.y, "#f4efe8", 3); hitWallCorner(hit.x, hit.y, 1.0, 40); }
+          splashHits.push({ x: hit.x, y: hit.y });
+        }
+        // 피해 반경 스플래시 (벽 충격 지점에서만)
+        const splashR = 55;
+        const splashedEnemies = new Set();
+        for (const sh of splashHits) {
+          for (const e of enemies) {
+            if (!splashedEnemies.has(e) && Math.hypot(e.x - sh.x, e.y - sh.y) < splashR + e.r) {
+              splashedEnemies.add(e);
+              e.hp -= 20;
+              burst(sh.x, sh.y, "#ff8040", 2);
+            }
+          }
         }
         flashes.push({ x: sx + dx * 14, y: sy + dy * 14, angle: player.angle, life: 0.1, maxLife: 0.1 });
         for (let i = 0; i < 8; i++) {
@@ -1297,7 +1331,11 @@
         shake = Math.max(shake, 8); recoilAmt = 1.0;
 
       } else if (currentWeapon === 2) {
-        // 마취총 - 투사체 발사, 데미지 22 + 슬로우 2.5초, 쿨다운 0.3s
+        // 마취총 - 투사체 발사, 데미지 22 + 슬로우, 5발 / 1.5초 재장전
+        if (taserReloadTimer > 0) return;
+        if (taserAmmo <= 0) { taserReloadTimer = TASER_RELOAD_TIME; return; }
+        taserAmmo--;
+        if (taserAmmo <= 0) taserReloadTimer = TASER_RELOAD_TIME;
         shootCooldown = 0.3;
         playSfx("playerGun", 0.72 + Math.random() * 0.06);
         const bspeed = 420;
@@ -1453,6 +1491,37 @@
         if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) return true;
       }
       return false;
+    }
+
+    function hasLOS(x1, y1, x2, y2) {
+      const dx = x2 - x1, dy = y2 - y1;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1) return true;
+      const steps = Math.ceil(dist / 10);
+      const ix = dx / steps, iy = dy / steps;
+      for (let i = 1; i < steps; i++) {
+        if (pointInsideSolid(x1 + ix * i, y1 + iy * i)) return false;
+      }
+      return true;
+    }
+
+    function hitWallCorner(hitX, hitY, dmgAmt, nearRadius) {
+      for (const wall of walls) {
+        const cs = Math.min(wall.w, wall.h) * 0.3;
+        const corners = [
+          { cx: wall.x, cy: wall.y, idx: 0 },
+          { cx: wall.x + wall.w, cy: wall.y, idx: 1 },
+          { cx: wall.x, cy: wall.y + wall.h, idx: 2 },
+          { cx: wall.x + wall.w, cy: wall.y + wall.h, idx: 3 }
+        ];
+        for (const c of corners) {
+          if (Math.hypot(hitX - c.cx, hitY - c.cy) < nearRadius) {
+            if (!wallCornerDmg.has(wall)) wallCornerDmg.set(wall, [0, 0, 0, 0]);
+            const d = wallCornerDmg.get(wall);
+            d[c.idx] = Math.min(1, d[c.idx] + dmgAmt);
+          }
+        }
+      }
     }
 
     function rayBlockDistance(x, y, dx, dy, maxDist) {
@@ -1671,6 +1740,9 @@
       shootCooldown -= dt;
       bombCooldown -= dt;
       spawnTimer -= dt;
+      if (rifleReloadTimer > 0) { rifleReloadTimer -= dt; if (rifleReloadTimer <= 0) { rifleReloadTimer = 0; rifleAmmo = RIFLE_MAX_AMMO; } }
+      if (shotgunReloadTimer > 0) { shotgunReloadTimer -= dt; if (shotgunReloadTimer <= 0) { shotgunReloadTimer = 0; shotgunAmmo = SHOTGUN_MAX_AMMO; } }
+      if (taserReloadTimer > 0) { taserReloadTimer -= dt; if (taserReloadTimer <= 0) { taserReloadTimer = 0; taserAmmo = TASER_MAX_AMMO; } }
       player.invuln -= dt;
       player.dodge -= dt;
       updateRaidWarningEffects(dt);
@@ -3363,6 +3435,27 @@
     function drawWall(wall) {
       const isH = wall.w > wall.h * 1.5;  // 가로 벽
       const isV = wall.h > wall.w * 1.5;  // 세로 벽
+      const dmg = wallCornerDmg.has(wall) ? wallCornerDmg.get(wall) : null;
+      const cs = Math.min(wall.w, wall.h) * 0.3;
+
+      ctx.save();
+      if (dmg) {
+        const [tl, tr, bl, br] = dmg;
+        const tlc = tl >= 1 ? cs : 0, trc = tr >= 1 ? cs : 0;
+        const blc = bl >= 1 ? cs : 0, brc = br >= 1 ? cs : 0;
+        ctx.beginPath();
+        ctx.moveTo(wall.x + tlc, wall.y);
+        ctx.lineTo(wall.x + wall.w - trc, wall.y);
+        if (trc) ctx.lineTo(wall.x + wall.w, wall.y + trc);
+        ctx.lineTo(wall.x + wall.w, wall.y + wall.h - brc);
+        if (brc) ctx.lineTo(wall.x + wall.w - brc, wall.y + wall.h);
+        ctx.lineTo(wall.x + blc, wall.y + wall.h);
+        if (blc) ctx.lineTo(wall.x, wall.y + wall.h - blc);
+        ctx.lineTo(wall.x, wall.y + tlc);
+        if (tlc) ctx.lineTo(wall.x + tlc, wall.y);
+        ctx.closePath();
+        ctx.clip();
+      }
 
       // 벽 베이스 (깊은 금속 어둠)
       const wallGrad = ctx.createLinearGradient(wall.x, wall.y, wall.x + (isH ? 0 : wall.w * 0.4), wall.y + (isH ? wall.h * 0.6 : 0));
@@ -3435,6 +3528,8 @@
       ctx.moveTo(wall.x, wall.y + wall.h);
       ctx.lineTo(wall.x + wall.w, wall.y + wall.h);
       ctx.stroke();
+
+      ctx.restore();
     }
 
     function drawDoor(door) {
@@ -3746,6 +3841,7 @@
     }
 
     function drawEnemy(e) {
+      if (!hasLOS(player.x, player.y, e.x, e.y)) return;
       ctx.save();
       ctx.translate(e.x, e.y);
       if (e.dropTime > 0) {
@@ -4971,8 +5067,8 @@
       ctx.moveTo(10, 10);
       ctx.lineTo(186, 10);
       ctx.lineTo(192, 16);
-      ctx.lineTo(192, 90);
-      ctx.lineTo(10, 90);
+      ctx.lineTo(192, 100);
+      ctx.lineTo(10, 100);
       ctx.closePath();
       ctx.fillStyle = "rgba(2,6,14,0.88)";
       ctx.fill();
@@ -4985,7 +5081,7 @@
       ctx.save();
       ctx.globalAlpha = 0.06;
       ctx.fillStyle = "#00c8ff";
-      const scanY = 10 + ((now * 55) % 82);
+      const scanY = 10 + ((now * 55) % 92);
       ctx.fillRect(11, scanY, 180, 2);
       ctx.restore();
 
@@ -5035,19 +5131,36 @@
       ctx.font = "bold 11px monospace";
       ctx.fillText(wIcons[currentWeapon] + " " + wNames[currentWeapon], 22, 58);
 
+      // 탄약 / 재장전 표시
+      ctx.font = "bold 9px monospace";
+      let reloadT = 0, ammoNow = 0, ammoMax = 0;
+      if (currentWeapon === 0) { reloadT = rifleReloadTimer; ammoNow = rifleAmmo; ammoMax = RIFLE_MAX_AMMO; }
+      else if (currentWeapon === 1) { reloadT = shotgunReloadTimer; ammoNow = shotgunAmmo; ammoMax = SHOTGUN_MAX_AMMO; }
+      else if (currentWeapon === 2) { reloadT = taserReloadTimer; ammoNow = taserAmmo; ammoMax = TASER_MAX_AMMO; }
+      if (currentWeapon <= 2) {
+        if (reloadT > 0) {
+          ctx.fillStyle = "#ff6060";
+          ctx.fillText("RELOAD " + Math.ceil(reloadT * 10) / 10 + "s", 22, 70);
+        } else {
+          ctx.fillStyle = ammoNow <= Math.ceil(ammoMax * 0.3) ? "#ffaa40" : "#a8e0ff";
+          ctx.fillText(ammoNow + "/" + ammoMax + " AMO", 22, 70);
+        }
+      }
+
       // 폭탄 상태
       ctx.fillStyle = bombCooldown > 0 ? "rgba(100,120,160,0.7)" : "#60a8d0";
       ctx.font = "bold 9px monospace";
-      ctx.fillText("[Q]BOMB " + (bombCooldown > 0 ? "·" + Math.ceil(bombCooldown * 10) / 10 + "s" : "READY"), 22, 72);
+      ctx.fillText("[Q]BOMB " + (bombCooldown > 0 ? "·" + Math.ceil(bombCooldown * 10) / 10 + "s" : "READY"), 22, 82);
 
       // HUD 코너 장식
       ctx.strokeStyle = "rgba(0,180,255,0.5)"; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(10, 22); ctx.lineTo(10, 10); ctx.lineTo(22, 10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(10, 98); ctx.lineTo(10, 100); ctx.lineTo(22, 100); ctx.stroke();
 
       // Wave / Kill 표시 (우상단 HUD 아래)
       ctx.fillStyle = "rgba(0,120,200,0.7)"; ctx.font = "bold 9px monospace";
       ctx.textAlign = "right";
-      ctx.fillText("WAVE " + wave, 192, 86);
+      ctx.fillText("WAVE " + wave, 192, 96);
       ctx.textAlign = "left";
       // 정지 시 개틀링 충전 인디케이터
       if (stationaryTimer > 0 && stationaryTimer < 1.0 && !autoGatling && !skillActive) {

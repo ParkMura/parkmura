@@ -147,7 +147,7 @@
         speedMult:1.1,  hpMult:0.8,   primaryW:0, secondaryW:4, bombType:"grenade", skillType:"stun_aura",
         col:{ body:"#3a0a2a", light:"#600a40", visor:"#ff88ff", shoulder:"#c04080" } },
     ];
-    let p1CharIdx = 0, p2CharIdx = 0;
+    let p1CharIdx = -1, p2CharIdx = -1;
     let charSelectPhase = 0; // 0=P1 고르는 중, 1=P2 고르는 중 (멀티플레이시)
     let playerChar = CHAR_DEFS[0];
     let rageActive = false, rageTimer = 0, ragePrevHp = 100;
@@ -332,7 +332,7 @@
       if (handleCameraButtonClick(mouse.x, mouse.y)) return;
       if (event.button === 2) mouse.right = true;
       else mouse.down = true;
-      if (state === "menu") { charSelectPhase = 0; p1CharIdx = 0; state = "charselect"; return; }
+      if (state === "menu") { charSelectPhase = 0; p1CharIdx = -1; p2CharIdx = -1; state = "charselect"; return; }
       if (state === "dead") startGame();
     });
     window.addEventListener("mouseup", (event) => {
@@ -3288,7 +3288,10 @@
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillStyle = `rgba(220,180,50,${0.6 + Math.abs(Math.sin(now*2))*0.35})`;
       ctx.font = `bold ${Math.min(12, height*0.022)}px monospace`;
-      ctx.fillText("탭하여 선택  ◈  다시 탭하면 확정", cx, height * 0.92);
+      const hint = (isP2 ? p2CharIdx : p1CharIdx) === -1
+        ? "캐릭터 카드를 탭하여 선택하세요"
+        : "한 번 더 탭하면 확정  ◈  다른 카드 탭하면 변경";
+      ctx.fillText(hint, cx, height * 0.92);
 
       // Back button
       ctx.fillStyle = "rgba(20,14,4,0.88)";
@@ -3847,27 +3850,26 @@
         const cx2 = startX + i * (cardW + 12) + cardW / 2;
         if (x >= cx2 - cardW/2 && x <= cx2 + cardW/2 && y >= cardY && y <= cardY + cardH) {
           if (isP2) {
-            if (p2CharIdx === i) {
-              // Confirmed P2 selection
+            if (p2CharIdx === i && p2CharIdx !== -1) {
+              // 두 번째 탭 → 확정
               state = "play";
               ensureAudio();
             } else {
-              p2CharIdx = i;
+              p2CharIdx = i; // 첫 번째 탭 → 선택만
             }
           } else {
-            if (p1CharIdx === i) {
-              // Confirmed P1 selection
+            if (p1CharIdx === i && p1CharIdx !== -1) {
+              // 두 번째 탭 → 확정
               playerChar = CHAR_DEFS[p1CharIdx];
               if (mp.role === "host" && player2) {
-                // multiplayer: P2 also picks
-                charSelectPhase = 1;
+                charSelectPhase = 1; p2CharIdx = -1;
               } else {
                 resetWorld();
                 state = "play";
                 ensureAudio();
               }
             } else {
-              p1CharIdx = i;
+              p1CharIdx = i; // 첫 번째 탭 → 선택만
             }
           }
           return;
@@ -6454,7 +6456,7 @@
         }
         if (state === "menu") {
           if (handleMenuClick(p.x, p.y)) return;
-          charSelectPhase = 0; p1CharIdx = 0; state = "charselect";
+          charSelectPhase = 0; p1CharIdx = -1; p2CharIdx = -1; state = "charselect";
           return;
         }
         if (state === "charselect") {

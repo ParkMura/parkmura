@@ -1600,11 +1600,11 @@
         skillEnergy = 0;
         speechBubbles.push({ x: player.x, y: player.y - 40, text: "STUN AURA!", life: 1.5, maxLife: 1.5, screen: true });
       } else if (st === "homing_missiles") {
-        // BULL: 유도 미사일 6발 — 상하좌우 균등 방사 발사
+        // BULL: 유도 미사일 6발 — 60도 간격 동시 방사
         skillEnergy = 0;
+        const spd = 66 * 0.3; // 현재 속도에서 70% 감속 → ~20px/s
         for (let i = 0; i < 6; i++) {
-          const spreadAngle = (i / 6) * Math.PI * 2; // 60도 간격 균등 분배
-          const spd = 66; // 기존 230 평균의 30%
+          const spreadAngle = (i / 6) * Math.PI * 2; // 0°·60°·120°·180°·240°·300°
           homingMissiles.push({
             x: player.x, y: player.y,
             vx: Math.cos(spreadAngle) * spd,
@@ -1612,8 +1612,8 @@
             sinePhase: i * Math.PI / 3,
             sineFreq: 2.8 + Math.random() * 1.2,
             sineAmp: 90 + Math.random() * 40,
-            life: 6.0, // 속도가 느리므로 수명 연장
-            delay: i * 0.1,
+            life: 10.0, // 느린 속도 보상 — 오래 비행
+            delay: 0,   // 6발 동시 발사
             target: null,
           });
         }
@@ -5321,7 +5321,7 @@
       ctx.save();
       ctx.translate(hm.x, hm.y);
       ctx.rotate(angle);
-      ctx.scale(0.4, 0.4); // 60% 더 작게
+      ctx.scale(0.28, 0.28); // 추가 30% 더 작게 (0.4 × 0.7)
       // 연기 꼬리
       ctx.globalAlpha = 0.35;
       const trail = ctx.createLinearGradient(-18, 0, 0, 0);

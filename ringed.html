@@ -1600,19 +1600,20 @@
         skillEnergy = 0;
         speechBubbles.push({ x: player.x, y: player.y - 40, text: "STUN AURA!", life: 1.5, maxLife: 1.5, screen: true });
       } else if (st === "homing_missiles") {
-        // BULL: 유도 미사일 6발 — 60도 간격 동시 방사
+        // BULL: 유도 미사일 6발 — 바람개비 방사 (접선 방향 발사)
         skillEnergy = 0;
+        const spd = 45; // 고정 속도 (px/s) — 느린 바람개비 효과
         for (let i = 0; i < 6; i++) {
-          const spreadAngle = (i / 6) * Math.PI * 2; // 0°·60°·120°·180°·240°·300°
-          const spd = 150; // 고정 속도 (px/s)
+          const radialAngle = (i / 6) * Math.PI * 2; // 방사 방향 (캐릭터에서 퍼지는 방향)
+          const launchAngle = radialAngle + Math.PI / 2; // 접선 방향 (90도 회전 → 바람개비)
           homingMissiles.push({
-            x: player.x + Math.cos(spreadAngle) * 28, // 캐릭터 주변 28px에서 출발
-            y: player.y + Math.sin(spreadAngle) * 28,
-            vx: Math.cos(spreadAngle) * spd,
-            vy: Math.sin(spreadAngle) * spd,
+            x: player.x + Math.cos(radialAngle) * 40, // 캐릭터 주변 40px에서 출발
+            y: player.y + Math.sin(radialAngle) * 40,
+            vx: Math.cos(launchAngle) * spd, // 접선 방향으로 발사
+            vy: Math.sin(launchAngle) * spd,
             sinePhase: i * (Math.PI * 2 / 6), // 각 미사일 S자 위상 다름
             sineFreq: 1.8 + Math.random() * 0.6,
-            life: 8.0,
+            life: 12.0, // 느린 속도 보완: 긴 수명
             delay: 0,
           });
         }
@@ -2318,7 +2319,7 @@
         hm.life -= dt;
         if (hm.life <= 0) { homingMissiles.splice(i, 1); continue; }
 
-        const FIXED_SPD = 150; // 고정 비행 속도 (px/s)
+        const FIXED_SPD = 45; // 고정 비행 속도 (px/s) — 바람개비 효과
 
         // 1. 가장 가까운 적 찾기
         let bestEnemy = null, bestDist = Infinity;
@@ -2327,13 +2328,13 @@
           if (d < bestDist) { bestDist = d; bestEnemy = e; }
         }
 
-        // 2. 적 방향으로 부드럽게 선회
+        // 2. 적 방향으로 부드럽게 선회 (느리게 — 바람개비 모양 유지)
         if (bestEnemy) {
           const tdx = bestEnemy.x - hm.x, tdy = bestEnemy.y - hm.y;
           const td = Math.hypot(tdx, tdy) || 1;
           const tvx = (tdx / td) * FIXED_SPD;
           const tvy = (tdy / td) * FIXED_SPD;
-          const turn = dt * 1.6; // 선회 강도 (낮을수록 느리게 방향 전환)
+          const turn = dt * 0.8; // 선회 강도 낮춤 — 바람개비 궤적 유지
           hm.vx += (tvx - hm.vx) * Math.min(1, turn);
           hm.vy += (tvy - hm.vy) * Math.min(1, turn);
         }

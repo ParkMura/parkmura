@@ -2362,10 +2362,10 @@
           }
           if (orbitHit) { homingMissiles.splice(i, 1); continue; }
         } else {
-          // ── 유도 단계: 가장 가까운 적으로 빠르게 수렴 ──
+          // ── 유도 단계: 플레이어에게 가장 가까운 적으로 수렴 ──
           let bestEnemy = null, bestDist = Infinity;
           for (const e of enemies) {
-            const d = Math.hypot(e.x - hm.x, e.y - hm.y);
+            const d = Math.hypot(e.x - player.x, e.y - player.y);
             if (d < bestDist) { bestDist = d; bestEnemy = e; }
           }
           if (bestEnemy) {

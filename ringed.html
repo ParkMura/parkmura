@@ -1600,21 +1600,20 @@
         skillEnergy = 0;
         speechBubbles.push({ x: player.x, y: player.y - 40, text: "STUN AURA!", life: 1.5, maxLife: 1.5, screen: true });
       } else if (st === "homing_missiles") {
-        // BULL: 유도 미사일 6발 — 바람개비 방사 (접선 방향 발사)
+        // BULL: 유도 미사일 6발 — 플레이어 주변 궤도 공전 후 적 추적
         skillEnergy = 0;
-        const spd = 4.5; // 고정 속도 (px/s) — 매우 느린 바람개비 효과
         for (let i = 0; i < 6; i++) {
-          const radialAngle = (i / 6) * Math.PI * 2; // 방사 방향 (캐릭터에서 퍼지는 방향)
-          const launchAngle = radialAngle + Math.PI / 2; // 접선 방향 (90도 회전 → 바람개비)
+          const orbitAngle = (i / 6) * Math.PI * 2; // 초기 공전 각도 (60도 간격)
           homingMissiles.push({
-            x: player.x + Math.cos(radialAngle) * 40, // 캐릭터 주변 40px에서 출발
-            y: player.y + Math.sin(radialAngle) * 40,
-            vx: Math.cos(launchAngle) * spd, // 접선 방향으로 발사
-            vy: Math.sin(launchAngle) * spd,
-            sinePhase: i * (Math.PI * 2 / 6), // 각 미사일 S자 위상 다름
-            sineFreq: 1.8 + Math.random() * 0.6,
-            freeFlightTime: 4.0, // 4초간 유도 없이 바람개비 전개 후 유도 시작
-            life: 12.0,
+            x: player.x + Math.cos(orbitAngle) * 50,
+            y: player.y + Math.sin(orbitAngle) * 50,
+            vx: 0, vy: 0,
+            orbitAngle: orbitAngle,   // 공전 각도 (매 프레임 증가)
+            orbitRadius: 50,          // 공전 반경 (서서히 커짐)
+            sinePhase: i * (Math.PI * 2 / 6),
+            sineFreq: 1.8 + Math.random() * 0.4,
+            orbitTime: 5.0,           // 5초간 바람개비 공전 후 유도 발사
+            life: 14.0,
             delay: 0,
           });
         }
@@ -2325,48 +2324,49 @@
         hm.life -= dt;
         if (hm.life <= 0) { homingMissiles.splice(i, 1); continue; }
 
-        const FIXED_SPD = 4.5; // 고정 비행 속도 (px/s) — 매우 느린 바람개비 효과
+        const HOMING_SPD = 160; // 유도 단계 속도 (px/s)
 
-        // 1. 자유비행 타이머 감소 (4초 동안 바람개비 전개, 이후 유도 시작)
-        if (hm.freeFlightTime === undefined) hm.freeFlightTime = 0;
-        if (hm.freeFlightTime > 0) {
-          hm.freeFlightTime -= dt;
+        if (hm.orbitTime === undefined) hm.orbitTime = 0;
+        if (hm.orbitTime > 0) {
+          // ── 공전 단계: 플레이어 주변 바람개비 회전 ──
+          hm.orbitTime -= dt;
+          const angularSpeed = 1.8; // rad/s — 약 1바퀴/3.5초
+          const radiusGrowth = 10;  // px/s — 서서히 바깥으로 퍼짐 (5초간 최대 +50px)
+          hm.orbitAngle += angularSpeed * dt;
+          hm.orbitRadius = Math.min(hm.orbitRadius + radiusGrowth * dt, 120);
+          // 중심은 플레이어를 계속 따라감
+          hm.x = player.x + Math.cos(hm.orbitAngle) * hm.orbitRadius;
+          hm.y = player.y + Math.sin(hm.orbitAngle) * hm.orbitRadius;
+          // vx/vy는 렌더링 방향(접선)용
+          const tangent = hm.orbitAngle + Math.PI / 2;
+          hm.vx = Math.cos(tangent) * HOMING_SPD;
+          hm.vy = Math.sin(tangent) * HOMING_SPD;
         } else {
-          // 2. 가장 가까운 적 찾기
+          // ── 유도 단계: 가장 가까운 적으로 빠르게 수렴 ──
           let bestEnemy = null, bestDist = Infinity;
           for (const e of enemies) {
             const d = Math.hypot(e.x - hm.x, e.y - hm.y);
             if (d < bestDist) { bestDist = d; bestEnemy = e; }
           }
-
-          // 3. 적 방향으로 선회 (자유비행 끝난 후 강하게 수렴)
           if (bestEnemy) {
             const tdx = bestEnemy.x - hm.x, tdy = bestEnemy.y - hm.y;
             const td = Math.hypot(tdx, tdy) || 1;
-            const tvx = (tdx / td) * FIXED_SPD;
-            const tvy = (tdy / td) * FIXED_SPD;
-            const turn = dt * 3.0;
-            hm.vx += (tvx - hm.vx) * Math.min(1, turn);
-            hm.vy += (tvy - hm.vy) * Math.min(1, turn);
+            hm.vx += ((tdx / td) * HOMING_SPD - hm.vx) * Math.min(1, dt * 4.0);
+            hm.vy += ((tdy / td) * HOMING_SPD - hm.vy) * Math.min(1, dt * 4.0);
           }
+          // S자 진동
+          hm.sinePhase += dt * hm.sineFreq * Math.PI * 2;
+          const len2 = Math.hypot(hm.vx, hm.vy) || 1;
+          const nx2 = -hm.vy / len2, ny2 = hm.vx / len2;
+          hm.vx += nx2 * Math.sin(hm.sinePhase) * 40 * dt;
+          hm.vy += ny2 * Math.sin(hm.sinePhase) * 40 * dt;
+          // 속도 정규화
+          const sp2 = Math.hypot(hm.vx, hm.vy) || 1;
+          hm.vx = (hm.vx / sp2) * HOMING_SPD;
+          hm.vy = (hm.vy / sp2) * HOMING_SPD;
+          hm.x += hm.vx * dt;
+          hm.y += hm.vy * dt;
         }
-
-        // 3. S자 진동: 진행 방향 수직으로 사인파 힘 추가
-        hm.sinePhase += dt * hm.sineFreq * Math.PI * 2;
-        const len = Math.hypot(hm.vx, hm.vy) || 1;
-        const nx = -hm.vy / len, ny = hm.vx / len; // 수직 단위벡터
-        const sineForce = Math.sin(hm.sinePhase) * 55 * dt;
-        hm.vx += nx * sineForce;
-        hm.vy += ny * sineForce;
-
-        // 4. 속도 크기를 항상 FIXED_SPD로 고정
-        const spd2 = Math.hypot(hm.vx, hm.vy) || 1;
-        hm.vx = (hm.vx / spd2) * FIXED_SPD;
-        hm.vy = (hm.vy / spd2) * FIXED_SPD;
-
-        // 5. 이동
-        hm.x += hm.vx * dt;
-        hm.y += hm.vy * dt;
 
         // 6. 충돌 판정
         let hit = false;

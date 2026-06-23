@@ -2330,10 +2330,8 @@
         if (hm.orbitTime > 0) {
           // ── 공전 단계: 플레이어 주변 바람개비 회전 ──
           hm.orbitTime -= dt;
-          const angularSpeed = 1.8; // rad/s — 약 1바퀴/3.5초
-          const radiusGrowth = 10;  // px/s — 서서히 바깥으로 퍼짐 (5초간 최대 +50px)
-          hm.orbitAngle += angularSpeed * dt;
-          hm.orbitRadius = Math.min(hm.orbitRadius + radiusGrowth * dt, 120);
+          hm.orbitAngle += 1.8 * dt; // rad/s 회전
+          hm.orbitRadius = Math.min((hm.orbitRadius || 50) + 10 * dt, 120);
           // 중심은 플레이어를 계속 따라감
           hm.x = player.x + Math.cos(hm.orbitAngle) * hm.orbitRadius;
           hm.y = player.y + Math.sin(hm.orbitAngle) * hm.orbitRadius;
@@ -2341,6 +2339,20 @@
           const tangent = hm.orbitAngle + Math.PI / 2;
           hm.vx = Math.cos(tangent) * HOMING_SPD;
           hm.vy = Math.sin(tangent) * HOMING_SPD;
+          // 공전 중 적에 닿으면 폭발 (벽 충돌 검사는 제외)
+          let orbitHit = false;
+          for (let j = enemies.length - 1; j >= 0; j--) {
+            const e = enemies[j];
+            if (Math.hypot(e.x - hm.x, e.y - hm.y) < (e.r || 22) + 4) {
+              e.hp -= 150 * (rageActive ? 2 : 1);
+              skillEnergy = Math.min(1, skillEnergy + 0.1);
+              burst(hm.x, hm.y, "#ff8800", 10);
+              burst(hm.x, hm.y, "#ffdd00", 7);
+              shake = Math.max(shake, 3);
+              orbitHit = true; break;
+            }
+          }
+          if (orbitHit) { homingMissiles.splice(i, 1); continue; }
         } else {
           // ── 유도 단계: 가장 가까운 적으로 빠르게 수렴 ──
           let bestEnemy = null, bestDist = Infinity;
@@ -2366,28 +2378,25 @@
           hm.vy = (hm.vy / sp2) * HOMING_SPD;
           hm.x += hm.vx * dt;
           hm.y += hm.vy * dt;
-        }
-
-        // 6. 충돌 판정
-        let hit = false;
-        for (let j = enemies.length - 1; j >= 0; j--) {
-          const e = enemies[j];
-          if (Math.hypot(e.x - hm.x, e.y - hm.y) < (e.r || 22) + 4) {
-            e.hp -= 150 * (rageActive ? 2 : 1);
-            skillEnergy = Math.min(1, skillEnergy + 0.1);
-            burst(hm.x, hm.y, "#ff8800", 10);
-            burst(hm.x, hm.y, "#ffdd00", 7);
-            burst(hm.x, hm.y, "#ff4400", 5);
-            shake = Math.max(shake, 3);
-            hit = true;
-            break;
+          // 유도 중 충돌 판정 (벽 포함)
+          let hit = false;
+          for (let j = enemies.length - 1; j >= 0; j--) {
+            const e = enemies[j];
+            if (Math.hypot(e.x - hm.x, e.y - hm.y) < (e.r || 22) + 4) {
+              e.hp -= 150 * (rageActive ? 2 : 1);
+              skillEnergy = Math.min(1, skillEnergy + 0.1);
+              burst(hm.x, hm.y, "#ff8800", 10);
+              burst(hm.x, hm.y, "#ffdd00", 7);
+              burst(hm.x, hm.y, "#ff4400", 5);
+              shake = Math.max(shake, 3);
+              hit = true; break;
+            }
           }
+          if (!hit && pointInsideSolid(hm.x, hm.y)) {
+            burst(hm.x, hm.y, "#ff6600", 6); hit = true;
+          }
+          if (hit) { homingMissiles.splice(i, 1); continue; }
         }
-        if (!hit && pointInsideSolid(hm.x, hm.y)) {
-          burst(hm.x, hm.y, "#ff6600", 6);
-          hit = true;
-        }
-        if (hit) homingMissiles.splice(i, 1);
       }
       // 미사일 업데이트 (VIPER 스킬)
       if (missileActive) {
@@ -5337,7 +5346,7 @@
       const now = performance.now() * 0.001;
       const angle = Math.atan2(hm.vy, hm.vx);
       // 자유비행 중(바람개비)이면 밝은 주황, 유도 중이면 빨강
-      const isFreeFlight = hm.freeFlightTime > 0;
+      const isFreeFlight = hm.orbitTime > 0;
       ctx.save();
       ctx.translate(hm.x, hm.y);
       ctx.rotate(angle);

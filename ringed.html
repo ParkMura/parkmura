@@ -2324,13 +2324,13 @@
         hm.life -= dt;
         if (hm.life <= 0) { homingMissiles.splice(i, 1); continue; }
 
-        const HOMING_SPD = 80; // 유도 단계 속도 (px/s)
+        const HOMING_SPD = 16; // 유도 단계 속도 (px/s)
 
         if (hm.orbitTime === undefined) hm.orbitTime = 0;
         if (hm.orbitTime > 0) {
           // ── 공전 단계: 플레이어 주변 바람개비 회전 ──
           hm.orbitTime -= dt;
-          hm.orbitAngle += 1.8 * dt; // rad/s 회전
+          hm.orbitAngle += 0.36 * dt; // rad/s 회전 (눈으로 볼 수 있는 속도)
           hm.orbitRadius = Math.min((hm.orbitRadius || 50) + 10 * dt, 120);
           // 중심은 플레이어를 계속 따라감
           hm.x = player.x + Math.cos(hm.orbitAngle) * hm.orbitRadius;

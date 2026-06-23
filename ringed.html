@@ -1613,7 +1613,8 @@
             vy: Math.sin(launchAngle) * spd,
             sinePhase: i * (Math.PI * 2 / 6), // 각 미사일 S자 위상 다름
             sineFreq: 1.8 + Math.random() * 0.6,
-            life: 12.0, // 느린 속도 보완: 긴 수명
+            freeFlightTime: 4.0, // 4초간 유도 없이 바람개비 전개 후 유도 시작
+            life: 12.0,
             delay: 0,
           });
         }
@@ -2326,22 +2327,28 @@
 
         const FIXED_SPD = 45; // 고정 비행 속도 (px/s) — 바람개비 효과
 
-        // 1. 가장 가까운 적 찾기
-        let bestEnemy = null, bestDist = Infinity;
-        for (const e of enemies) {
-          const d = Math.hypot(e.x - hm.x, e.y - hm.y);
-          if (d < bestDist) { bestDist = d; bestEnemy = e; }
-        }
+        // 1. 자유비행 타이머 감소 (4초 동안 바람개비 전개, 이후 유도 시작)
+        if (hm.freeFlightTime === undefined) hm.freeFlightTime = 0;
+        if (hm.freeFlightTime > 0) {
+          hm.freeFlightTime -= dt;
+        } else {
+          // 2. 가장 가까운 적 찾기
+          let bestEnemy = null, bestDist = Infinity;
+          for (const e of enemies) {
+            const d = Math.hypot(e.x - hm.x, e.y - hm.y);
+            if (d < bestDist) { bestDist = d; bestEnemy = e; }
+          }
 
-        // 2. 적 방향으로 부드럽게 선회 (느리게 — 바람개비 모양 유지)
-        if (bestEnemy) {
-          const tdx = bestEnemy.x - hm.x, tdy = bestEnemy.y - hm.y;
-          const td = Math.hypot(tdx, tdy) || 1;
-          const tvx = (tdx / td) * FIXED_SPD;
-          const tvy = (tdy / td) * FIXED_SPD;
-          const turn = dt * 0.8; // 선회 강도 낮춤 — 바람개비 궤적 유지
-          hm.vx += (tvx - hm.vx) * Math.min(1, turn);
-          hm.vy += (tvy - hm.vy) * Math.min(1, turn);
+          // 3. 적 방향으로 선회 (자유비행 끝난 후 강하게 수렴)
+          if (bestEnemy) {
+            const tdx = bestEnemy.x - hm.x, tdy = bestEnemy.y - hm.y;
+            const td = Math.hypot(tdx, tdy) || 1;
+            const tvx = (tdx / td) * FIXED_SPD;
+            const tvy = (tdy / td) * FIXED_SPD;
+            const turn = dt * 3.0;
+            hm.vx += (tvx - hm.vx) * Math.min(1, turn);
+            hm.vy += (tvy - hm.vy) * Math.min(1, turn);
+          }
         }
 
         // 3. S자 진동: 진행 방향 수직으로 사인파 힘 추가
@@ -5329,48 +5336,57 @@
     function drawHomingMissile(hm) {
       const now = performance.now() * 0.001;
       const angle = Math.atan2(hm.vy, hm.vx);
+      // 자유비행 중(바람개비)이면 밝은 주황, 유도 중이면 빨강
+      const isFreeFlight = hm.freeFlightTime > 0;
       ctx.save();
       ctx.translate(hm.x, hm.y);
       ctx.rotate(angle);
 
-      // ── 긴 글로우 꼬리 ──────────────────────────
-      ctx.globalAlpha = 0.55;
-      const trail = ctx.createLinearGradient(-52, 0, 0, 0);
+      // ── 넓은 외부 글로우 (항상 밝게) ─────────────
+      const outerGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, 28);
+      outerGlow.addColorStop(0, isFreeFlight ? "rgba(255,200,0,0.5)" : "rgba(255,80,0,0.5)");
+      outerGlow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = outerGlow;
+      ctx.beginPath(); ctx.arc(0, 0, 28, 0, Math.PI * 2); ctx.fill();
+
+      // ── 꼬리 불꽃 ──────────────────────────
+      ctx.globalAlpha = 0.75;
+      const trail = ctx.createLinearGradient(-80, 0, 0, 0);
       trail.addColorStop(0, "rgba(255,60,0,0)");
-      trail.addColorStop(0.5, "rgba(255,140,0,0.4)");
-      trail.addColorStop(1, "rgba(255,220,80,0.9)");
+      trail.addColorStop(0.4, isFreeFlight ? "rgba(255,160,0,0.45)" : "rgba(255,60,0,0.45)");
+      trail.addColorStop(1, isFreeFlight ? "rgba(255,240,80,1)" : "rgba(255,120,0,1)");
       ctx.fillStyle = trail;
-      ctx.fillRect(-52, -5, 52, 10);
+      ctx.fillRect(-80, -7, 80, 14);
       ctx.globalAlpha = 1;
 
-      // ── 외부 발광 (블러 효과 대신 반투명 큰 원) ──
-      const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 14);
-      glow.addColorStop(0, "rgba(255,180,0,0.55)");
+      // ── 핵심 발광 원 ──
+      const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 18);
+      glow.addColorStop(0, isFreeFlight ? "rgba(255,240,100,0.9)" : "rgba(255,120,0,0.9)");
       glow.addColorStop(1, "rgba(255,60,0,0)");
       ctx.fillStyle = glow;
-      ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill();
 
-      // ── 본체: 밝은 방추형 ────────────────────────
-      ctx.fillStyle = "#fff5a0";
-      ctx.strokeStyle = "#ff6600";
-      ctx.lineWidth = 1.2;
+      // ── 본체: 방추형 (더 크게) ────────────────────────
+      ctx.fillStyle = isFreeFlight ? "#fff8c0" : "#ffccaa";
+      ctx.strokeStyle = isFreeFlight ? "#ff9900" : "#ff3300";
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.moveTo(10, 0);
-      ctx.lineTo(-7, -4);
-      ctx.lineTo(-7,  4);
+      ctx.moveTo(14, 0);
+      ctx.lineTo(-10, -6);
+      ctx.lineTo(-10,  6);
       ctx.closePath();
       ctx.fill(); ctx.stroke();
 
       // ── 탄두 빛점 ────────────────────────────────
       ctx.fillStyle = "#ffffff";
-      ctx.beginPath(); ctx.arc(10, 0, 3.5, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#ffdd00";
-      ctx.beginPath(); ctx.arc(10, 0, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(14, 0, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = isFreeFlight ? "#ffee00" : "#ff6600";
+      ctx.beginPath(); ctx.arc(14, 0, 3, 0, Math.PI * 2); ctx.fill();
 
       // ── 엔진 불꽃 (깜빡임) ───────────────────────
       const flicker = 0.7 + Math.sin(now * 60) * 0.3;
       ctx.fillStyle = `rgba(255,${100 + Math.sin(now*45)*100|0},0,${flicker})`;
-      ctx.beginPath(); ctx.arc(-7, 0, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-10, 0, 7, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = `rgba(255,220,80,${flicker * 0.8})`;
       ctx.beginPath(); ctx.arc(-7, 0, 2.5, 0, Math.PI * 2); ctx.fill();
 

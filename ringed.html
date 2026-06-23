@@ -157,7 +157,7 @@
     let healAuraTimer = 0;
     const c4List = [];
     let c4AimShakeCount = 0, c4AimShakePrev = 0;
-    let skillAimShakeCount = 0, skillAimShakePrev = 0, skillAimShakeTimer = 0;
+    let skillAimShakeCount = 0, skillAimShakePrevX = 0, skillAimShakePrevY = 0, skillAimShakeTimer = 0;
     const mortarShells = [];
     const homingMissiles = []; // BULL 스킬: 유도 미사일 6발
     let missileCharging = false, missileHoldTimer = 0, missileAimX = 0, missileAimY = 0;
@@ -895,7 +895,7 @@
       rageActive = false; rageTimer = 0; ragePrevHp = player.hp;
       healAuraTimer = 0;
       c4List.length = 0; c4AimShakeCount = 0; c4AimShakePrev = 0;
-      skillAimShakeCount = 0; skillAimShakePrev = 0; skillAimShakeTimer = 0;
+      skillAimShakeCount = 0; skillAimShakePrevX = 0; skillAimShakePrevY = 0; skillAimShakeTimer = 0;
       mortarShells.length = 0;
       homingMissiles.length = 0;
       missileCharging = false; missileHoldTimer = 0; missileActive = null;
@@ -2229,23 +2229,28 @@
         activateSkill();
       }
       if (isMobile) {
-        // AIM 위아래 3번 흔들기 → 스킬 발동 (전 캐릭터 통일)
-        const aimDy = mobileControls.aimDeflection > 0.25 ? mobileControls.aimDirY : 0;
-        if (mobileControls.shoot && aimDy !== 0) {
-          if (Math.sign(aimDy) !== Math.sign(skillAimShakePrev) && skillAimShakePrev !== 0) {
+        // AIM 좌우상하 마구 흔들기(1초 내 5회 방향 전환) → 스킬 발동 (전 캐릭터 통일)
+        const threshold = 0.25;
+        const aimDx = mobileControls.aimDeflection > threshold ? mobileControls.aimDirX : 0;
+        const aimDy = mobileControls.aimDeflection > threshold ? mobileControls.aimDirY : 0;
+        if (mobileControls.shoot && (aimDx !== 0 || aimDy !== 0)) {
+          let reversed = false;
+          if (aimDx !== 0 && Math.sign(aimDx) !== Math.sign(skillAimShakePrevX) && skillAimShakePrevX !== 0) reversed = true;
+          if (aimDy !== 0 && Math.sign(aimDy) !== Math.sign(skillAimShakePrevY) && skillAimShakePrevY !== 0) reversed = true;
+          if (reversed) {
             skillAimShakeCount++;
-            skillAimShakeTimer = 1.8;
-            if (skillAimShakeCount >= 3 && skillEnergy >= 1 && !skillActive && !missileCharging) {
+            skillAimShakeTimer = 1.0;
+            if (skillAimShakeCount >= 5 && skillEnergy >= 1 && !skillActive && !missileCharging) {
               activateSkill();
               skillAimShakeCount = 0;
               c4AimShakeCount = 0;
             }
           }
-          skillAimShakePrev = aimDy;
+          if (aimDx !== 0) skillAimShakePrevX = aimDx;
+          if (aimDy !== 0) skillAimShakePrevY = aimDy;
         } else if (!mobileControls.shoot) {
-          skillAimShakePrev = 0;
-          skillAimShakeCount = 0;
-          skillAimShakeTimer = 0;
+          skillAimShakePrevX = 0; skillAimShakePrevY = 0;
+          skillAimShakeCount = 0; skillAimShakeTimer = 0;
         }
         if (skillAimShakeTimer > 0) {
           skillAimShakeTimer -= dt;

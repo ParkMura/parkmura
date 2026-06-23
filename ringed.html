@@ -5,7 +5,10 @@
   <meta http-equiv="Cache-Control" content="no-store, max-age=0">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>SANG SUB</title>
   <style>
     html, body {
@@ -379,6 +382,12 @@
     }
 
     function ensureAudio() {
+      // 첫 터치/클릭 시 풀스크린 (주소창 숨기기)
+      if (!document.fullscreenElement) {
+        const el = document.documentElement;
+        if (el.requestFullscreen) el.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      }
       if (audioReady) {
         if (!noirGain) startNoirBgm();
         unlockAudio();

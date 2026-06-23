@@ -160,6 +160,8 @@
     const PISTOL_MAX_AMMO = 15, PISTOL_RELOAD_TIME = 1.5;
     const HEAVY_PISTOL_MAX_AMMO = 5, HEAVY_PISTOL_RELOAD_TIME = 1.5;
     let sniperAmmo = SNIPER_MAX_AMMO, sniperReloadTimer = 0;
+    // 저격총 모바일: 조준 중 목표 위치 실시간 저장 → 손 뗄 때 fireSniperAt 호출
+    let sniperAimTx = 0, sniperAimTy = 0, sniperAimReady = false;
     let pistolAmmo = PISTOL_MAX_AMMO, pistolReloadTimer = 0;
     let heavyPistolAmmo = HEAVY_PISTOL_MAX_AMMO, heavyPistolReloadTimer = 0;
     let sniperCharging = false, sniperChargeDirX = 0, sniperChargeDirY = 0;
@@ -884,7 +886,7 @@
       c4List.length = 0; c4AimShakeCount = 0; c4AimShakePrev = 0;
       mortarShells.length = 0;
       missileCharging = false; missileHoldTimer = 0; missileActive = null;
-      sniperAmmo = SNIPER_MAX_AMMO; sniperReloadTimer = 0;
+      sniperAmmo = SNIPER_MAX_AMMO; sniperReloadTimer = 0; sniperAimReady = false;
       pistolAmmo = PISTOL_MAX_AMMO; pistolReloadTimer = 0;
       heavyPistolAmmo = HEAVY_PISTOL_MAX_AMMO; heavyPistolReloadTimer = 0;
       sniperCharging = false;
@@ -2683,7 +2685,7 @@
     function mobileAimWorldTarget() {
       if (mobileControls.shoot && mobileControls.aimDeflection > 0) {
         const inv = currentWeapon === 5 && playerChar && playerChar.id === 2;
-        const scopeMult = inv ? 1.04 : 1;
+        const scopeMult = inv ? 2.5 : 1;
         const maxWorldRadius = Math.min(width, height) * 0.38 / camera.zoom * scopeMult;
         const dx = mobileControls.aimDirX;
         const dy = mobileControls.aimDirY;
@@ -6062,7 +6064,7 @@
       let wx, wy;
       const isVIPERSniper = currentWeapon === 5 && playerChar && playerChar.id === 2;
       if (mobileControls.shoot && mobileControls.aimDeflection > 0) {
-        const scopeMult = isVIPERSniper ? 1.04 : 1;
+        const scopeMult = isVIPERSniper ? 2.5 : 1;
         const maxWorldRadius = Math.min(width, height) * 0.38 / camera.zoom * scopeMult;
         const dx = mobileControls.aimDirX;
         const dy = mobileControls.aimDirY;
@@ -7070,13 +7072,10 @@
         if (touch.identifier === mobileControls.aimId) mobileControls.aimId = null;
       }
       if (mobileControls.aimId === null) {
-        // 저격총 (VIPER weapon 5): AIM 손 뗄 때 발사, 반전 과녁 위치 기준 정확도 데미지
-        if (currentWeapon === 5 && playerChar && playerChar.id === 2 &&
-            mobileControls.shoot && mobileControls.aimDeflection > 0 && state === "play") {
-          const maxWorldRadius = Math.min(width, height) * 0.38 / camera.zoom * 1.04;
-          const tx = player.x + mobileControls.aimDirX * mobileControls.aimDeflection * maxWorldRadius;
-          const ty = player.y + mobileControls.aimDirY * mobileControls.aimDeflection * maxWorldRadius;
-          fireSniperAt(tx, ty);
+        // 저격총 (VIPER weapon 5): AIM 손 뗄 때 발사
+        if (currentWeapon === 5 && playerChar && playerChar.id === 2 && state === "play" && sniperAimReady) {
+          fireSniperAt(sniperAimTx, sniperAimTy);
+          sniperAimReady = false;
         }
         // 폭탄 무기: AIM 손 뗄 때 투척
         if (currentWeapon === 3 && mobileControls.shoot && mobileControls.aimDeflection > 0 && bombCooldown <= 0 && !skillActive && state === "play") {
@@ -7151,6 +7150,14 @@
       mobileControls.aimTouchX = x;
       mobileControls.aimTouchY = y;
       mobileControls.aimAtEdge = (dragDist >= maxDrag * 0.72);
+
+      // VIPER 저격총: 조준 중 목표 위치 실시간 저장
+      if (currentWeapon === 5 && playerChar && playerChar.id === 2 && deflection > 0) {
+        const maxWorldRadius = Math.min(width, height) * 0.38 / camera.zoom * 2.5;
+        sniperAimTx = player.x + dirX * deflection * maxWorldRadius;
+        sniperAimTy = player.y + dirY * deflection * maxWorldRadius;
+        sniperAimReady = true;
+      }
     }
 
     function calcAimScreenPos() {

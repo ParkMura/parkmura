@@ -6058,7 +6058,7 @@
     }
 
     function drawMobileAimCursorWorld() {
-      // 월드 좌표계에 과녁 그리기 — 캐릭터와 동일한 카메라 변환 사용하여 항상 정확한 위치
+      // 월드 좌표계에 과녁 그리기 (정방향 v2)
       let wx, wy;
       const isVIPERSniper = currentWeapon === 5 && playerChar && playerChar.id === 2;
       if (mobileControls.shoot && mobileControls.aimDeflection > 0) {

@@ -1602,19 +1602,18 @@
       } else if (st === "homing_missiles") {
         // BULL: 유도 미사일 6발 — 60도 간격 동시 방사
         skillEnergy = 0;
-        const spd = 66 * 0.3; // 현재 속도에서 70% 감속 → ~20px/s
         for (let i = 0; i < 6; i++) {
           const spreadAngle = (i / 6) * Math.PI * 2; // 0°·60°·120°·180°·240°·300°
+          const spd = 90; // 고정 속도 (px/s)
           homingMissiles.push({
-            x: player.x, y: player.y,
+            x: player.x + Math.cos(spreadAngle) * 28, // 캐릭터 주변 28px에서 출발
+            y: player.y + Math.sin(spreadAngle) * 28,
             vx: Math.cos(spreadAngle) * spd,
             vy: Math.sin(spreadAngle) * spd,
-            sinePhase: i * Math.PI / 3,
-            sineFreq: 2.8 + Math.random() * 1.2,
-            sineAmp: 90 + Math.random() * 40,
-            life: 10.0, // 느린 속도 보상 — 오래 비행
-            delay: 0,   // 6발 동시 발사
-            target: null,
+            sinePhase: i * (Math.PI * 2 / 6), // 각 미사일 S자 위상 다름
+            sineFreq: 1.8 + Math.random() * 0.6,
+            life: 8.0,
+            delay: 0,
           });
         }
         shake = Math.max(shake, 4);
@@ -2313,49 +2312,56 @@
         }
       }
       // 유도 미사일 업데이트 (BULL 스킬)
+      // 유도 미사일 업데이트 (BULL 스킬)
       for (let i = homingMissiles.length - 1; i >= 0; i--) {
         const hm = homingMissiles[i];
-        hm.delay -= dt;
-        if (hm.delay > 0) continue; // 아직 발사 전
         hm.life -= dt;
-        // 가장 가까운 적 추적
+        if (hm.life <= 0) { homingMissiles.splice(i, 1); continue; }
+
+        const FIXED_SPD = 90; // 고정 비행 속도 (px/s)
+
+        // 1. 가장 가까운 적 찾기
         let bestEnemy = null, bestDist = Infinity;
         for (const e of enemies) {
           const d = Math.hypot(e.x - hm.x, e.y - hm.y);
           if (d < bestDist) { bestDist = d; bestEnemy = e; }
         }
+
+        // 2. 적 방향으로 부드럽게 선회
         if (bestEnemy) {
-          // 호밍: 적 방향으로 속도 보간 (점진적 선회)
           const tdx = bestEnemy.x - hm.x, tdy = bestEnemy.y - hm.y;
           const td = Math.hypot(tdx, tdy) || 1;
-          const spd = Math.hypot(hm.vx, hm.vy) || 260;
-          const targetVx = (tdx / td) * spd, targetVy = (tdy / td) * spd;
-          const turn = Math.min(1, dt * 2.2); // 선회 강도
-          hm.vx += (targetVx - hm.vx) * turn;
-          hm.vy += (targetVy - hm.vy) * turn;
-          // S자 진동: 진행방향 수직 벡터에 사인파 더하기
-          const len = Math.hypot(hm.vx, hm.vy) || 1;
-          const nx = -hm.vy / len, ny = hm.vx / len; // 수직 단위벡터
-          hm.sinePhase += dt * hm.sineFreq * Math.PI * 2;
-          const sineForce = Math.sin(hm.sinePhase) * hm.sineAmp * dt;
-          hm.vx += nx * sineForce;
-          hm.vy += ny * sineForce;
-          // 속도 크기 고정 (280~340 사이)
-          const newLen = Math.hypot(hm.vx, hm.vy) || 1;
-          const clampedSpd = Math.min(340, Math.max(200, newLen));
-          hm.vx = (hm.vx / newLen) * clampedSpd;
-          hm.vy = (hm.vy / newLen) * clampedSpd;
+          const tvx = (tdx / td) * FIXED_SPD;
+          const tvy = (tdy / td) * FIXED_SPD;
+          const turn = dt * 1.6; // 선회 강도 (낮을수록 느리게 방향 전환)
+          hm.vx += (tvx - hm.vx) * Math.min(1, turn);
+          hm.vy += (tvy - hm.vy) * Math.min(1, turn);
         }
+
+        // 3. S자 진동: 진행 방향 수직으로 사인파 힘 추가
+        hm.sinePhase += dt * hm.sineFreq * Math.PI * 2;
+        const len = Math.hypot(hm.vx, hm.vy) || 1;
+        const nx = -hm.vy / len, ny = hm.vx / len; // 수직 단위벡터
+        const sineForce = Math.sin(hm.sinePhase) * 55 * dt;
+        hm.vx += nx * sineForce;
+        hm.vy += ny * sineForce;
+
+        // 4. 속도 크기를 항상 FIXED_SPD로 고정
+        const spd2 = Math.hypot(hm.vx, hm.vy) || 1;
+        hm.vx = (hm.vx / spd2) * FIXED_SPD;
+        hm.vy = (hm.vy / spd2) * FIXED_SPD;
+
+        // 5. 이동
         hm.x += hm.vx * dt;
         hm.y += hm.vy * dt;
-        // 충돌 판정: 적에게 닿으면 폭발
+
+        // 6. 충돌 판정
         let hit = false;
         for (let j = enemies.length - 1; j >= 0; j--) {
           const e = enemies[j];
-          if (Math.hypot(e.x - hm.x, e.y - hm.y) < (e.r || 22) + 5) {
+          if (Math.hypot(e.x - hm.x, e.y - hm.y) < (e.r || 22) + 4) {
             e.hp -= 150 * (rageActive ? 2 : 1);
             skillEnergy = Math.min(1, skillEnergy + 0.1);
-            // 폭죽 폭발 효과
             burst(hm.x, hm.y, "#ff8800", 10);
             burst(hm.x, hm.y, "#ffdd00", 7);
             burst(hm.x, hm.y, "#ff4400", 5);
@@ -2368,7 +2374,7 @@
           burst(hm.x, hm.y, "#ff6600", 6);
           hit = true;
         }
-        if (hit || hm.life <= 0) { homingMissiles.splice(i, 1); }
+        if (hit) homingMissiles.splice(i, 1);
       }
       // 미사일 업데이트 (VIPER 스킬)
       if (missileActive) {
@@ -5321,7 +5327,7 @@
       ctx.save();
       ctx.translate(hm.x, hm.y);
       ctx.rotate(angle);
-      ctx.scale(0.28, 0.28); // 추가 30% 더 작게 (0.4 × 0.7)
+      ctx.scale(0.45, 0.45); // 원본의 45% 크기
       // 연기 꼬리
       ctx.globalAlpha = 0.35;
       const trail = ctx.createLinearGradient(-18, 0, 0, 0);

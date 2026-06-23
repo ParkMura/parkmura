@@ -144,7 +144,7 @@
         speedMult:0.82, hpMult:1.35,  primaryW:1, secondaryW:4, bombType:"c4",      skillType:"homing_missiles",
         col:{ body:"#281808", light:"#4a2a10", visor:"#ff4400", shoulder:"#7a5008" } },
       { id:2, name:"VIPER", sub:"정예 저격수", gender:"male",   build:"slim",
-        speedMult:1.22, hpMult:0.75,  primaryW:5, secondaryW:6, bombType:"grenade", skillType:"missile",
+        speedMult:1.22, hpMult:0.75,  primaryW:5, secondaryW:6, bombType:"grenade", skillType:"drone_laser",
         col:{ body:"#102818", light:"#1e4020", visor:"#00ff88", shoulder:"#204820" } },
       { id:3, name:"MEDIC", sub:"전투 의무병", gender:"female", build:"slim",
         speedMult:1.1,  hpMult:0.8,   primaryW:0, secondaryW:4, bombType:"grenade", skillType:"stun_aura",
@@ -160,6 +160,7 @@
     let skillAimShakeCount = 0, skillAimShakePrevX = 0, skillAimShakePrevY = 0, skillAimShakeTimer = 0;
     const mortarShells = [];
     const homingMissiles = []; // BULL 스킬: 유도 미사일 6발
+    const drones = [];         // VIPER 스킬: 드론 레이저
     let missileCharging = false, missileHoldTimer = 0, missileAimX = 0, missileAimY = 0;
     const SNIPER_MAX_AMMO = 5, SNIPER_RELOAD_TIME = 1.5;
     const PISTOL_MAX_AMMO = 15, PISTOL_RELOAD_TIME = 1.5;
@@ -899,6 +900,7 @@
       skillAimShakeCount = 0; skillAimShakePrevX = 0; skillAimShakePrevY = 0; skillAimShakeTimer = 0;
       mortarShells.length = 0;
       homingMissiles.length = 0;
+      drones.length = 0;
       missileCharging = false; missileHoldTimer = 0; missileActive = null;
       sniperAmmo = SNIPER_MAX_AMMO; sniperReloadTimer = 0; sniperAimReady = false;
       pistolAmmo = PISTOL_MAX_AMMO; pistolReloadTimer = 0;
@@ -1627,21 +1629,25 @@
         }
         shake = Math.max(shake, 4);
         speechBubbles.push({ text: "LOCK ON!", life: 1.2, maxLife: 1.2, screen: true });
-      } else if (st === "missile") {
-        // VIPER: 대형 미사일 즉시 발사
+      } else if (st === "drone_laser") {
+        // VIPER: 가까운 적 순으로 드론 배치 → 레이저 발사
         skillEnergy = 0;
-        const aimDx = isMobile && mobileControls.aimDeflection > 0.1 ? mobileControls.aimDirX : Math.cos(player.angle);
-        const aimDy = isMobile && mobileControls.aimDeflection > 0.1 ? mobileControls.aimDirY : Math.sin(player.angle);
-        const spd = 620;
-        missileActive = {
-          x: player.x + aimDx * 40,
-          y: player.y + aimDy * 40,
-          vx: aimDx * spd,
-          vy: aimDy * spd,
-          life: 3.5
-        };
-        speechBubbles.push({ text: "MISSILE!", life: 1.0, maxLife: 1.0, screen: true });
-        shake = Math.max(shake, 6);
+        const sorted = enemies.slice().sort((a, b) =>
+          Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y)
+        );
+        const targets = sorted.slice(0, Math.min(4, sorted.length));
+        targets.forEach((e, i) => {
+          drones.push({
+            target: e,
+            x: e.x, y: e.y - 64,
+            fireDelay: 0.35 + i * 0.18,
+            fired: false,
+            laserTimer: 0,
+            life: 2.2 + i * 0.18,
+          });
+        });
+        shake = Math.max(shake, 5);
+        speechBubbles.push({ text: "DRONE STRIKE!", life: 1.2, maxLife: 1.2, screen: true });
       } else {
         // HAWK: 발칸포 스킬
         skillActive = true; skillTimer = 3.0; shootCooldown = 0;
@@ -2406,7 +2412,7 @@
           if (hit) { homingMissiles.splice(i, 1); continue; }
         }
       }
-      // 미사일 업데이트 (VIPER 스킬)
+      // 미사일 업데이트 (구 VIPER 스킬 — 호환성 유지)
       if (missileActive) {
         missileActive.x += missileActive.vx * dt;
         missileActive.y += missileActive.vy * dt;
@@ -2415,6 +2421,30 @@
           explodeMissile(missileActive.x, missileActive.y);
           missileActive = null;
         }
+      }
+      // 드론 업데이트 (VIPER 스킬)
+      for (let i = drones.length - 1; i >= 0; i--) {
+        const dr = drones[i];
+        dr.life -= dt;
+        if (dr.life <= 0) { drones.splice(i, 1); continue; }
+        // 드론이 타겟 적 머리 위를 따라다님
+        if (dr.target && enemies.includes(dr.target)) {
+          dr.x += (dr.target.x - dr.x) * Math.min(1, dt * 8);
+          dr.y += (dr.target.y - 64 - dr.y) * Math.min(1, dt * 8);
+        }
+        dr.fireDelay -= dt;
+        if (dr.fireDelay <= 0 && !dr.fired) {
+          dr.fired = true;
+          dr.laserTimer = 0.35;
+          if (dr.target && enemies.includes(dr.target)) {
+            dr.target.hp -= 200 * (rageActive ? 2 : 1);
+            skillEnergy = Math.min(1, skillEnergy + 0.15);
+            burst(dr.x, dr.target.y, "#00ffcc", 8);
+            burst(dr.x, dr.target.y, "#ffffff", 4);
+            shake = Math.max(shake, 3);
+          }
+        }
+        if (dr.laserTimer > 0) dr.laserTimer -= dt;
       }
       for (let i = bombs.length - 1; i >= 0; i--) {
         const b = bombs[i];
@@ -4526,6 +4556,7 @@
       drawEnemyTracers();
       drawFlameBursts();
       for (const e of enemies) drawEnemy(e);
+      for (const dr of drones) drawDrone(dr);
       drawSpeechBubbles();
       drawPlayer();
       if (mp.role === "host" && player2) drawRemotePlayer(player2, true);
@@ -5406,6 +5437,86 @@
       ctx.beginPath(); ctx.arc(-10, 0, 7, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = `rgba(255,220,80,${flicker * 0.8})`;
       ctx.beginPath(); ctx.arc(-7, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawDrone(dr) {
+      const now = performance.now() * 0.001;
+      const t = dr.life;
+      const alpha = Math.min(1, t * 3);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // 레이저 빔 (발사 후)
+      if (dr.fired && dr.laserTimer > 0 && dr.target) {
+        const la = dr.laserTimer / 0.35;
+        ctx.globalAlpha = alpha * la;
+        const lx = dr.x;
+        const ty = dr.target.y;
+        // 외부 빔 (넓고 반투명)
+        const lg = ctx.createLinearGradient(lx - 8, dr.y, lx + 8, dr.y);
+        lg.addColorStop(0, "rgba(0,255,180,0)");
+        lg.addColorStop(0.5, `rgba(0,255,220,${0.7 * la})`);
+        lg.addColorStop(1, "rgba(0,255,180,0)");
+        ctx.fillStyle = lg;
+        ctx.fillRect(lx - 8, dr.y, 16, ty - dr.y);
+        // 핵심 빔 (얇고 밝음)
+        ctx.fillStyle = `rgba(180,255,255,${la})`;
+        ctx.fillRect(lx - 2, dr.y, 4, ty - dr.y);
+        // 충격 플래시
+        ctx.globalAlpha = alpha * la * 0.8;
+        const imp = ctx.createRadialGradient(lx, ty, 0, lx, ty, 28);
+        imp.addColorStop(0, "rgba(255,255,255,0.9)");
+        imp.addColorStop(0.4, "rgba(0,255,200,0.6)");
+        imp.addColorStop(1, "rgba(0,255,200,0)");
+        ctx.fillStyle = imp;
+        ctx.beginPath(); ctx.arc(lx, ty, 28, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = alpha;
+      }
+
+      // 드론 본체
+      ctx.translate(dr.x, dr.y);
+      const hover = Math.sin(now * 4 + dr.fireDelay) * 3;
+      ctx.translate(0, hover);
+
+      // 충전 글로우
+      if (!dr.fired) {
+        const charge = Math.max(0, 1 - dr.fireDelay / 0.35);
+        const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 20 + charge * 10);
+        glow.addColorStop(0, `rgba(0,255,180,${0.6 * charge})`);
+        glow.addColorStop(1, "rgba(0,255,180,0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // 드론 몸체 (납작한 육각형 실루엣)
+      ctx.fillStyle = "#1a3a2a";
+      ctx.strokeStyle = dr.fired ? "#00ffaa" : "#00cc88";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2 - Math.PI / 6;
+        k === 0 ? ctx.moveTo(Math.cos(a) * 12, Math.sin(a) * 7) : ctx.lineTo(Math.cos(a) * 12, Math.sin(a) * 7);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+
+      // 중앙 렌즈
+      const lens = ctx.createRadialGradient(0, 0, 0, 0, 0, 5);
+      lens.addColorStop(0, "#ffffff");
+      lens.addColorStop(0.4, dr.fired ? "#00ffcc" : "#00cc88");
+      lens.addColorStop(1, "#003322");
+      ctx.fillStyle = lens;
+      ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+
+      // 좌우 프로펠러
+      for (const sx of [-14, 14]) {
+        ctx.strokeStyle = "rgba(0,255,160,0.7)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(sx, 0, 7, 2, now * (sx > 0 ? 8 : -8), 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       ctx.restore();
     }

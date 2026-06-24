@@ -291,8 +291,10 @@
     const neutralObj = { active: false, timer: 45, capTeam: -1, capProgress: 0, x: 0, y: 0 };
     // ── 역전 버프 표시 ──
     const comebackMsg = { life: 0 };
-    // ── 팀배틀 리스폰 ──
+    // ── 팀배틀 리스폰 + 킬 스코어 ──
     let playerRespawnTimer = 0;   // >0 = respawning, 0 = alive
+    let tbKills = [0, 0];         // [BLUE킬수, RED킬수]
+    const TB_KILL_LIMIT = 30;     // 먼저 30킬 → 승리
     const props = [];
     const walls = [];
     const doors = [];
@@ -3037,6 +3039,7 @@
       lastKillTime = now;
       kills++;
       skillEnergy = Math.min(1, skillEnergy + 0.125);
+      if (gameMode === "teambattle") tbKills[playerTeam]++;
       // 스트릭 메시지
       const streakLabels = ["", "", "DOUBLE KILL!", "TRIPLE KILL!", "QUAD KILL!", "RAMPAGE!!!"];
       const sLabel = killStreak >= 2 ? (streakLabels[Math.min(killStreak, 5)] || "GODLIKE!!!") : "";
@@ -8951,7 +8954,7 @@
       facilities.length=0;
       facilities.push({ x:120,           y:Math.round(world.h*0.25), w:360, h:Math.round(world.h*0.5), hp:5000, maxHp:5000, team:0 });
       facilities.push({ x:world.w-480,   y:Math.round(world.h*0.25), w:360, h:Math.round(world.h*0.5), hp:5000, maxHp:5000, team:1 });
-      teamBattleWon=null; tbTimer=0; playerRespawnTimer=0;
+      teamBattleWon=null; tbTimer=0; playerRespawnTimer=0; tbKills=[0,0];
       setupAiPlayers();
       setupCrates();
       enemies.length=0;
@@ -9453,13 +9456,21 @@
                 if (gameMode !== "teambattle") state = "dead";
                 else if (playerRespawnTimer <= 0) {
                   playerRespawnTimer = 5;
+                  tbKills[ai.team]++;
+                  killFeed.unshift({ text: ai.name + " ▶ " + playerChar.name, color: "#f84", life: 3.5, maxLife: 3.5 });
+                  if (killFeed.length > 5) killFeed.pop();
                   floatingTexts.push({ text: "ELIMINATED!", x: player.x, y: player.y-60, vy:-40, life:1.5, maxLife:1.5, size:22, color:"#ff4444", screen:false });
                   burst(player.x, player.y, "#ff4444", 25);
                 }
               }
             } else if (target.alive !== undefined) {
               target.hp = Math.max(0, target.hp - wDmg);
-              if (target.hp <= 0) { target.hp=0; target.alive=false; target.respawnTimer = 10; }
+              if (target.hp <= 0) {
+                target.hp=0; target.alive=false; target.respawnTimer = 10;
+                tbKills[ai.team]++;
+                killFeed.unshift({ text: ai.name + " ▶ " + (target.name||"?"), color: "#f84", life: 3.5, maxLife: 3.5 });
+                if (killFeed.length > 5) killFeed.pop();
+              }
             } else if (target.isFacility) {
               target.fac.hp = Math.max(0, target.fac.hp - Math.round(wDmg * 0.7));
             }
@@ -9476,6 +9487,9 @@
       for (const fac of facilities) {
         if (fac.hp<=0) { teamBattleWon=(fac.team===playerTeam)?"lose":"win"; return; }
       }
+      // 킬 리드 승패 (TB_KILL_LIMIT 먼저 달성)
+      if (tbKills[playerTeam] >= TB_KILL_LIMIT) { teamBattleWon="win"; return; }
+      if (tbKills[1-playerTeam] >= TB_KILL_LIMIT) { teamBattleWon="lose"; return; }
       // 내 팀 전원 완전 사망(리스폰 타이머도 없음) → 패배
       const playerOut = player.hp<=0 && playerRespawnTimer<=0;
       const allyOut = !aiPlayers.some(ai=>ai.team===playerTeam&&(ai.alive||ai.respawnTimer>0));
@@ -9659,6 +9673,16 @@
         ctx.fillStyle="#ffaaaa"; ctx.font="bold 9px monospace"; ctx.textAlign="center";
         ctx.fillText(`RED  ${Math.ceil(red.hp)}/${red.maxHp}`,rx+barW/2,4);
       }
+      // ── 킬 스코어 ──
+      const bScore = playerTeam===0 ? tbKills[0] : tbKills[1];
+      const rScore = playerTeam===0 ? tbKills[1] : tbKills[0];
+      ctx.textAlign="center";
+      ctx.font=`bold ${Math.min(20,width*0.028)}px Arial Black,monospace`;
+      ctx.fillStyle="#77aaff"; ctx.fillText(bScore, cx-34, 20);
+      ctx.fillStyle="#888"; ctx.font=`bold ${Math.min(12,width*0.018)}px monospace`;
+      ctx.fillText(`/ ${TB_KILL_LIMIT}`, cx, 20);
+      ctx.fillStyle="#ff7777"; ctx.font=`bold ${Math.min(20,width*0.028)}px Arial Black,monospace`;
+      ctx.fillText(rScore, cx+34, 20);
       // ── 팀원 생존 아이콘 ──
       // 각 팀 구성원(플레이어+AI)을 소형 원으로 표시, 사망 시 X
       const blueMembers = [

@@ -4113,14 +4113,7 @@
         ctx.beginPath(); ctx.moveTo(bx+bS*sx,by); ctx.lineTo(bx,by); ctx.lineTo(bx,by+bS*sy); ctx.stroke();
       });
 
-      // Back button
-      ctx.save();
-      ctx.fillStyle = "rgba(18,12,3,0.92)"; ctx.fillRect(12, 10, 82, 28);
-      ctx.strokeStyle = "rgba(170,125,30,0.65)"; ctx.lineWidth = 1; ctx.strokeRect(12, 10, 82, 28);
-      ctx.fillStyle = "rgba(210,158,45,0.85)"; ctx.font = "bold 10px monospace";
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText("◄ BACK", 53, 24);
-      ctx.restore();
+      drawHomeBtn();
     }
 
     function drawCharPortrait(cd, isSelected, now) {
@@ -4832,10 +4825,7 @@
       const startX = width/2 - totalW / 2;
       const cardY = height * 0.19;
       const isP2 = charSelectPhase === 1;
-      // Back button
-      if (x >= 14 && x <= 94 && y >= 12 && y <= 38) {
-        state = "menu"; gameMode = "classic"; return;
-      }
+      if (handleHomeBtnClick(x, y, () => { state = "menu"; gameMode = "classic"; })) return;
       for (let i = 0; i < 4; i++) {
         const cx2 = startX + i * (cardW + 12) + cardW / 2;
         if (x >= cx2 - cardW/2 && x <= cx2 + cardW/2 && y >= cardY && y <= cardY + cardH) {
@@ -9071,11 +9061,7 @@
       // Desc
       ctx.fillStyle="#887766"; ctx.font=`${Math.min(11,width*0.018)}px monospace`;
       ctx.fillText("AI 아군과 함께 적 기지(HP 3000)를 파괴하면 승리!", cx, cy+62);
-      // Back button
-      ctx.fillStyle="rgba(0,0,0,0.5)"; ctx.fillRect(8,8,80,26);
-      ctx.strokeStyle="rgba(180,120,30,0.6)"; ctx.lineWidth=1; ctx.strokeRect(8,8,80,26);
-      ctx.fillStyle="#c08030"; ctx.font="bold 11px monospace"; ctx.textAlign="left";
-      ctx.fillText("◀ BACK",14,25);
+      drawHomeBtn();
     }
 
     function teamSelectBtnRects() {
@@ -9088,7 +9074,7 @@
     }
 
     function handleTeamSelectClick(x, y) {
-      if (x>=8 && x<=88 && y>=8 && y<=34) { state="menu"; gameMode="classic"; return; }
+      if (handleHomeBtnClick(x, y, () => { state="menu"; gameMode="classic"; })) return;
       const {blue,red}=teamSelectBtnRects();
       if (x>=blue.x && x<=blue.x+blue.w && y>=blue.y && y<=blue.y+blue.h) { playerTeam=0; startTeamBattle(); return; }
       if (x>=red.x  && x<=red.x+red.w   && y>=red.y  && y<=red.y+red.h)  { playerTeam=1; startTeamBattle(); return; }
@@ -10417,8 +10403,6 @@
         const startRect={x:width/2-90, y:height*0.87, w:180, h:44};
         const canStart=(tbLobbyMyTeam >= 0);
         drawLobbyBtn(startRect, canStart?"▶ START":"팀 선택 후 시작", canStart?"#1a3a08":"#1a1a1a", canStart?"#88ff44":"#666666");
-        const backRect={x:20, y:20, w:100, h:34};
-        drawLobbyBtn(backRect,"← 메뉴로","#1a1a1a","#888888");
 
       } else if (mp.role === "tbclient") {
         ctx.fillStyle = mp.connected ? "#4488ff" : "#ff8844";
@@ -10453,9 +10437,9 @@
           ctx.fillStyle="rgba(180,200,255,0.5)"; ctx.font=`${Math.min(11,width*0.018)}px monospace`;
           ctx.fillText("4자리 코드를 입력하세요", width/2, padStartY-40);
         }
-        const backRect={x:20, y:20, w:100, h:34};
-        drawLobbyBtn(backRect,"← 메뉴로","#1a1a1a","#888888");
       }
+      // 항상 상단 좌측 홈 버튼
+      drawHomeBtn();
       ctx.textAlign="left";
     }
 
@@ -10518,9 +10502,7 @@
     }
 
     function handleOnlineLobbyClick(x, y) {
-      // 메뉴로 돌아가기
-      if (x>=20 && x<=120 && y>=20 && y<=54) { resetTBOnline(); state="menu"; return; }
-
+      if (handleHomeBtnClick(x, y, () => { resetTBOnline(); state="menu"; })) return;
       if (!mp.role) {
         const bw=Math.min(160,width*0.28), bh=50, gap=Math.min(24,width*0.04);
         const hRect={x:width/2-bw-gap/2, y:height*0.35-bh/2, w:bw, h:bh};
@@ -10619,7 +10601,39 @@
       return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
     }
 
+    // ── 공통 홈 버튼 (모든 비게임 화면 상단 좌측) ──
+    function homeBtnRect() {
+      return { x: 12, y: 10, w: 110, h: 42 };
+    }
+    function drawHomeBtn() {
+      const r = homeBtnRect();
+      ctx.save();
+      // 배경
+      ctx.fillStyle = "rgba(8,5,1,0.90)";
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      // 테두리
+      ctx.strokeStyle = "rgba(200,150,35,0.85)";
+      ctx.lineWidth = 1.8;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      // 내부 장식선
+      ctx.strokeStyle = "rgba(180,130,25,0.30)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6);
+      // 라벨
+      ctx.fillStyle = "#d4a832";
+      ctx.font = `bold ${Math.min(14, r.h * 0.36)}px monospace`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("◀ 홈", r.x + r.w / 2, r.y + r.h / 2);
+      ctx.restore();
+    }
+    function handleHomeBtnClick(x, y, onHome) {
+      if (inRect(x, y, homeBtnRect())) { onHome(); return true; }
+      return false;
+    }
+
     function handleLobbyClick(x, y) {
+      if (handleHomeBtnClick(x, y, () => { state = "menu"; resetMp(); })) return true;
       if (!mp.role) {
         const rects = lobbyButtonRects();
         if (inRect(x, y, rects.host)) { initHost(); return true; }
@@ -10897,6 +10911,8 @@
           drawLobbyBtn(rects.back, "← 메뉴로", "#252525", "#999999");
         }
       }
+      // 항상 상단 좌측 홈 버튼
+      drawHomeBtn();
     }
 
     function drawLobbyBtn(rect, label, bgColor, fgColor) {

@@ -2642,7 +2642,7 @@
               (gameMode === "teambattle" && aiPlayers.includes(dr.target) && dr.target.alive && dr.target.team !== playerTeam);
             if (isValidEnemy) {
               dr.target.hp -= dmgAmt;
-              if (dr.target.alive !== undefined && dr.target.hp <= 0) { dr.target.hp = 0; dr.target.alive = false; }
+              if (dr.target.alive !== undefined && dr.target.hp <= 0) { dr.target.hp = 0; dr.target.alive = false; if (dr.target.respawnTimer !== undefined) dr.target.respawnTimer = 10; }
               skillEnergy = Math.min(1, skillEnergy + dmgAmt / 1000);
               groundBurns.push({ x: dr.target.x, y: dr.target.y, life: 2.2, maxLife: 2.2 });
               burst(dr.x, dr.target.y, "#00ffcc", 8);
@@ -9109,6 +9109,7 @@
           strafeDir: 1, strafeTimer: 0,
           stuckTimer: 0, lastX: sx, lastY: sy,
           stk: { x: sx, y: sy, t: 0, esc: 0, escA: 0, idx: 0, stuckTotal: 0 },
+          respawnTimer: 0,
           aiWeapon: 'rifle', aiBombCd: 2.0 + Math.random(),
           aiBurstLeft: 0, aiBurstPause: 0,
           aiReactCd: 0.4 + Math.random() * 0.4,
@@ -9137,6 +9138,7 @@
           strafeDir: 1, strafeTimer: 0,
           stuckTimer: 0, lastX: axBase, lastY: aly,
           stk: { x: axBase, y: aly, t: 0, esc: 0, escA: 0, idx: 0, stuckTotal: 0 },
+          respawnTimer: 0,
           aiWeapon: 'rifle', aiBombCd: 2.0 + Math.random(),
           aiBurstLeft: 0, aiBurstPause: 0,
           aiReactCd: 0.4 + Math.random() * 0.4,
@@ -9171,6 +9173,24 @@
 
     function updateAiPlayers(dt) {
       for (const ai of aiPlayers) {
+        // AI 리스폰 타이머
+        if (!ai.alive && ai.respawnTimer > 0) {
+          ai.respawnTimer -= dt;
+          if (ai.respawnTimer <= 0) {
+            ai.respawnTimer = 0;
+            ai.alive = true;
+            ai.hp = ai.maxHp;
+            const W = world.w, H = world.h;
+            const spawnX = ai.team === 0 ? Math.round(W * 0.32) : Math.round(W * 0.68);
+            const laneYs = [Math.round(42 + H * 0.19), Math.round(H * 0.50), Math.round(42 + H * 0.78)];
+            ai.x = spawnX + (Math.random() - 0.5) * 80;
+            ai.y = laneYs[Math.floor(Math.random() * 3)] + (Math.random() - 0.5) * 60;
+            ai.invuln = 2.0;
+            ai.stk = { x: ai.x, y: ai.y, t: 0, esc: 0, escA: 0, idx: 0, stuckTotal: 0 };
+            burst(ai.x, ai.y, ai.team===0 ? "#4488ff" : "#ff4444", 14);
+          }
+          continue;
+        }
         if (!ai.alive) continue;
 
         // 스턴
@@ -9439,7 +9459,7 @@
               }
             } else if (target.alive !== undefined) {
               target.hp = Math.max(0, target.hp - wDmg);
-              if (target.hp <= 0) { target.hp=0; target.alive=false; }
+              if (target.hp <= 0) { target.hp=0; target.alive=false; target.respawnTimer = 10; }
             } else if (target.isFacility) {
               target.fac.hp = Math.max(0, target.fac.hp - Math.round(wDmg * 0.7));
             }
@@ -9456,15 +9476,10 @@
       for (const fac of facilities) {
         if (fac.hp<=0) { teamBattleWon=(fac.team===playerTeam)?"lose":"win"; return; }
       }
-      // 적팀 전원 사망 → 승리
-      const eTeam=1-playerTeam;
-      const enemyAiAlive=aiPlayers.some(ai=>ai.team===eTeam&&ai.alive);
-      if (!enemyAiAlive) { teamBattleWon="win"; return; }
-      // 내 팀 전원 사망(플레이어+AI) → 패배 (리스폰 대기 중이면 아직 패배 아님)
-      if (player.hp<=0 && playerRespawnTimer<=0) {
-        const allyAiAlive=aiPlayers.some(ai=>ai.team===playerTeam&&ai.alive);
-        if (!allyAiAlive) { teamBattleWon="lose"; }
-      }
+      // 내 팀 전원 완전 사망(리스폰 타이머도 없음) → 패배
+      const playerOut = player.hp<=0 && playerRespawnTimer<=0;
+      const allyOut = !aiPlayers.some(ai=>ai.team===playerTeam&&(ai.alive||ai.respawnTimer>0));
+      if (playerOut && allyOut) { teamBattleWon="lose"; }
     }
 
     function applyTBHit(hit, dmg) {
@@ -9477,6 +9492,7 @@
         addFloatText(dmg, hit.x, hit.y, isCrit ? "#FFD700" : "#ff8844", isCrit ? 20 : 14);
         if (hit.aiPlayer.hp <= 0) {
           hit.aiPlayer.hp = 0; hit.aiPlayer.alive = false;
+          hit.aiPlayer.respawnTimer = 10;
           onKill(hit.x, hit.y, playerChar.name, hit.aiPlayer.name || "AI");
           burst(hit.x, hit.y, "#ff6622", 22);
         }
@@ -9646,23 +9662,28 @@
       // ── 팀원 생존 아이콘 ──
       // 각 팀 구성원(플레이어+AI)을 소형 원으로 표시, 사망 시 X
       const blueMembers = [
-        { alive: playerTeam===0 ? (player.hp>0||playerRespawnTimer>0) : false, isPlayer: playerTeam===0 },
-        ...aiPlayers.filter(a=>a.team===0).map(a=>({ alive:a.alive, isPlayer:false }))
-      ].filter((_, i, arr) => playerTeam===0 ? true : i < arr.length);
+        { alive: playerTeam===0?(player.hp>0):false, respawning: playerTeam===0&&player.hp<=0&&playerRespawnTimer>0, timer: playerTeam===0?playerRespawnTimer:0, isPlayer: playerTeam===0 },
+        ...aiPlayers.filter(a=>a.team===0).map(a=>({ alive:a.alive, respawning:!a.alive&&(a.respawnTimer||0)>0, timer:a.respawnTimer||0, isPlayer:false }))
+      ];
       const redMembers = [
-        { alive: playerTeam===1 ? (player.hp>0||playerRespawnTimer>0) : false, isPlayer: playerTeam===1 },
-        ...aiPlayers.filter(a=>a.team===1).map(a=>({ alive:a.alive, isPlayer:false }))
-      ].filter((_, i, arr) => playerTeam===1 ? true : i < arr.length);
+        { alive: playerTeam===1?(player.hp>0):false, respawning: playerTeam===1&&player.hp<=0&&playerRespawnTimer>0, timer: playerTeam===1?playerRespawnTimer:0, isPlayer: playerTeam===1 },
+        ...aiPlayers.filter(a=>a.team===1).map(a=>({ alive:a.alive, respawning:!a.alive&&(a.respawnTimer||0)>0, timer:a.respawnTimer||0, isPlayer:false }))
+      ];
 
-      function drawMemberIcon(mx, my, alive, isPlayer, teamCol) {
+      function drawMemberIcon(mx, my, alive, respawning, timer, isPlayer, teamCol) {
         const r = isPlayer ? 8 : 6;
         ctx.beginPath(); ctx.arc(mx, my, r, 0, Math.PI*2);
-        ctx.fillStyle = alive ? teamCol : "rgba(60,60,60,0.8)";
+        ctx.fillStyle = alive ? teamCol : respawning ? "rgba(220,150,0,0.7)" : "rgba(60,60,60,0.8)";
         ctx.fill();
         if (isPlayer && alive) {
           ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke();
           ctx.fillStyle="#fff"; ctx.font="bold 7px monospace"; ctx.textAlign="center";
           ctx.fillText("★", mx, my+2.5);
+        } else if (respawning) {
+          // 리스폰 대기: 주황 원 + 남은 초
+          ctx.strokeStyle="#ffaa00"; ctx.lineWidth=1.5; ctx.stroke();
+          ctx.fillStyle="#fff"; ctx.font=`bold ${r}px monospace`; ctx.textAlign="center";
+          ctx.fillText(Math.ceil(timer), mx, my+r*0.4);
         } else if (!alive) {
           ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.stroke();
           ctx.strokeStyle="#ff4444"; ctx.lineWidth=1.5;
@@ -9673,10 +9694,10 @@
 
       // BLUE 아이콘: 기지바 왼쪽에 세로 배치
       const biconX = bx - 20;
-      blueMembers.forEach((m, i) => drawMemberIcon(biconX, 13 + i * 18, m.alive, m.isPlayer, "#3366ff"));
+      blueMembers.forEach((m, i) => drawMemberIcon(biconX, 13 + i * 18, m.alive, m.respawning, m.timer, m.isPlayer, "#3366ff"));
       // RED 아이콘: 기지바 오른쪽
       const riconX = rx + barW + 20;
-      redMembers.forEach((m, i) => drawMemberIcon(riconX, 13 + i * 18, m.alive, m.isPlayer, "#ff3333"));
+      redMembers.forEach((m, i) => drawMemberIcon(riconX, 13 + i * 18, m.alive, m.respawning, m.timer, m.isPlayer, "#ff3333"));
       // Win/lose overlay
       if (teamBattleWon!==null) {
         ctx.fillStyle=teamBattleWon==="win"?"rgba(0,30,100,0.58)":"rgba(80,0,0,0.58)";

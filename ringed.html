@@ -8046,6 +8046,10 @@
           handleLobbyClick(p.x, p.y);
           return;
         }
+        if (state === "onlinelobby") {
+          handleOnlineLobbyClick(p.x, p.y);
+          return;
+        }
       if (state !== "play") continue;
       const action = mobileActionAt(p.x, p.y);
         if (action === "bomb") {

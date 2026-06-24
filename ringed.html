@@ -9079,30 +9079,72 @@
 
     function setupAiPlayers() {
       aiPlayers.length = 0;
+      const W = world.w, H = world.h;
+
+      // 적팀 AI 3명: 플레이어가 선택하지 않은 캐릭터 3종
       const eteam = 1 - playerTeam;
-      // AI spawns past the right cover wall (~2276) in open midfield
-      const rx = Math.round(world.w * 0.68); // ≈2244 on 3300-wide map
-      const aiSpawnY = Math.round(42 + world.h * 0.63);
-      // 4개 캐릭터 중 완전 랜덤 선택
-      const ci = Math.floor(Math.random() * 4);
-      const ch = CHAR_DEFS[ci];
-      aiPlayers.push({
-        team: eteam, charIdx: ci, x: rx, y: aiSpawnY,
-        hp: ch.tbHp, maxHp: ch.tbHp,
-        angle: Math.PI, speed: 170 * ch.speedMult,
-        shootCd: 1.0 + Math.random() * 0.5,
-        walkTime: 0, isMoving: false,
-        alive: true, col: ch.col, build: ch.build, name: ch.name,
-        r: 16, collisionR: 16,
-        strafeDir: 1, strafeTimer: 0,
-        stuckTimer: 0, lastX: rx, lastY: aiSpawnY,
-        aiWeapon: 'rifle', aiBombCd: 2.0 + Math.random(),
-        aiBurstLeft: 0, aiBurstPause: 0,
-        aiReactCd: 0.4 + Math.random() * 0.3,
-        aiHurtTimer: 0, aiLastHp: ch.tbHp,
-        aiPeekDir: (Math.random() < 0.5 ? 1 : -1), aiPeekTimer: 0,
-        aiLastTargetId: null,
+      const enemyChars = [0, 1, 2, 3].filter(i => i !== playerChar.id);
+      // 적팀 스폰: 플레이어 팀이 BLUE(0)면 오른쪽, RED(1)면 왼쪽
+      const exBase = eteam === 1 ? Math.round(W * 0.68) : Math.round(W * 0.32);
+      // 3 레인 Y 좌표
+      const laneYs = [
+        Math.round(42 + H * 0.19),   // 상단 레인
+        Math.round(H * 0.50),          // 중앙 레인
+        Math.round(42 + H * 0.78),    // 하단 레인
+      ];
+      const faceAngle = eteam === 1 ? Math.PI : 0; // 적팀은 플레이어 방향 향함
+
+      enemyChars.forEach((ci, i) => {
+        const ch = CHAR_DEFS[ci];
+        const sx = exBase + (Math.random() - 0.5) * 80;
+        const sy = laneYs[i] + (Math.random() - 0.5) * 60;
+        aiPlayers.push({
+          team: eteam, charIdx: ci, x: sx, y: sy,
+          hp: ch.tbHp, maxHp: ch.tbHp,
+          angle: faceAngle, speed: 170 * ch.speedMult,
+          shootCd: 1.2 + Math.random() * 0.6,
+          walkTime: 0, isMoving: false,
+          alive: true, col: ch.col, build: ch.build, name: ch.name,
+          r: 16, collisionR: 16,
+          strafeDir: 1, strafeTimer: 0,
+          stuckTimer: 0, lastX: sx, lastY: sy,
+          stk: { x: sx, y: sy, t: 0, esc: 0, escA: 0, idx: 0, stuckTotal: 0 },
+          aiWeapon: 'rifle', aiBombCd: 2.0 + Math.random(),
+          aiBurstLeft: 0, aiBurstPause: 0,
+          aiReactCd: 0.4 + Math.random() * 0.4,
+          aiHurtTimer: 0, aiLastHp: ch.tbHp,
+          aiPeekDir: (Math.random() < 0.5 ? 1 : -1), aiPeekTimer: 0,
+          aiLastTargetId: null,
+        });
       });
+
+      // 아군 AI 2명: 플레이어 팀, 랜덤 2캐릭터
+      const allyPool = [...enemyChars];
+      for (let i = 0; i < 2; i++) {
+        const ci = allyPool.splice(Math.floor(Math.random() * allyPool.length), 1)[0];
+        const ch = CHAR_DEFS[ci];
+        const axBase = playerTeam === 0 ? Math.round(W * 0.32) : Math.round(W * 0.68);
+        const aly = laneYs[i === 0 ? 0 : 2] + (Math.random() - 0.5) * 60;
+        const allyFace = playerTeam === 0 ? 0 : Math.PI;
+        aiPlayers.push({
+          team: playerTeam, charIdx: ci, x: axBase, y: aly,
+          hp: ch.tbHp, maxHp: ch.tbHp,
+          angle: allyFace, speed: 170 * ch.speedMult,
+          shootCd: 1.2 + Math.random() * 0.6,
+          walkTime: 0, isMoving: false,
+          alive: true, col: ch.col, build: ch.build, name: ch.name,
+          r: 16, collisionR: 16,
+          strafeDir: 1, strafeTimer: 0,
+          stuckTimer: 0, lastX: axBase, lastY: aly,
+          stk: { x: axBase, y: aly, t: 0, esc: 0, escA: 0, idx: 0, stuckTotal: 0 },
+          aiWeapon: 'rifle', aiBombCd: 2.0 + Math.random(),
+          aiBurstLeft: 0, aiBurstPause: 0,
+          aiReactCd: 0.4 + Math.random() * 0.4,
+          aiHurtTimer: 0, aiLastHp: ch.tbHp,
+          aiPeekDir: (Math.random() < 0.5 ? 1 : -1), aiPeekTimer: 0,
+          aiLastTargetId: null,
+        });
+      }
     }
 
     function setupCrates() {

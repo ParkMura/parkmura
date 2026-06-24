@@ -291,6 +291,8 @@
     const neutralObj = { active: false, timer: 45, capTeam: -1, capProgress: 0, x: 0, y: 0 };
     // ── 역전 버프 표시 ──
     const comebackMsg = { life: 0 };
+    // ── 팀배틀 리스폰 ──
+    let playerRespawnTimer = 0;   // >0 = respawning, 0 = alive
     const props = [];
     const walls = [];
     const doors = [];
@@ -553,6 +555,10 @@
       gain.connect(audioCtx.destination);
       source.start(now + start);
       source.stop(now + start + duration);
+    }
+
+    function playTone(freq, volume, duration) {
+      playToneLayer({ type: "sine", startFreq: freq, endFreq: freq, duration, volume: Math.min(0.25, volume) });
     }
 
     function playToneLayer({ type = "sine", startFreq, endFreq, duration, volume, delay = 0 }) {
@@ -1819,8 +1825,14 @@
           burst(player.x, player.y, "#9a1d18", 12);
           if (player.hp <= 0) {
             player.hp = 0;
-            state = "dead";
-            gameOverTimer = 0;
+            if (gameMode === "teambattle" && playerRespawnTimer <= 0) {
+              playerRespawnTimer = 5;
+              floatingTexts.push({ text: "ELIMINATED!", x: player.x, y: player.y-60, vy:-40, life:1.5, maxLife:1.5, size:22, color:"#ff4444", screen:false });
+              burst(player.x, player.y, "#ff4444", 25);
+            } else if (gameMode !== "teambattle") {
+              state = "dead";
+              gameOverTimer = 0;
+            }
           }
         }
         shake = Math.max(shake, 12);
@@ -2176,21 +2188,25 @@
       }
       wave = 1 + Math.floor(kills / 12);
 
+      const isRespawning = gameMode === "teambattle" && playerRespawnTimer > 0;
+
       let mx = 0;
       let my = 0;
-      if (keys.has("KeyW") || keys.has("ArrowUp")) my--;
-      if (keys.has("KeyS") || keys.has("ArrowDown")) my++;
-      if (keys.has("KeyA") || keys.has("ArrowLeft")) mx--;
-      if (keys.has("KeyD") || keys.has("ArrowRight")) mx++;
-      if (isMobile) {
-        mx += mobileControls.moveX;
-        my += mobileControls.moveY;
+      if (!isRespawning) {
+        if (keys.has("KeyW") || keys.has("ArrowUp")) my--;
+        if (keys.has("KeyS") || keys.has("ArrowDown")) my++;
+        if (keys.has("KeyA") || keys.has("ArrowLeft")) mx--;
+        if (keys.has("KeyD") || keys.has("ArrowRight")) mx++;
+        if (isMobile) {
+          mx += mobileControls.moveX;
+          my += mobileControls.moveY;
+        }
       }
       const mag = Math.hypot(mx, my) || 1;
       mx /= mag;
       my /= mag;
 
-      const sprint = keys.has("ShiftLeft") || keys.has("ShiftRight");
+      const sprint = !isRespawning && (keys.has("ShiftLeft") || keys.has("ShiftRight"));
       let speed = sprint && player.stamina > 0 ? 160 : 106;
       speed *= playerChar.speedMult * (rageActive ? 1.2 : 1);
       if (sprint && (mx || my)) player.stamina = Math.max(0, player.stamina - dt * 35);
@@ -2311,6 +2327,22 @@
         }
         // 버프 타이머
         if (player.buffTimer > 0) { player.buffTimer -= dt; if (player.buffTimer <= 0) { player.buffTimer = 0; player.dmgBuff = 1.0; } }
+        // 리스폰 타이머
+        if (playerRespawnTimer > 0) {
+          playerRespawnTimer -= dt;
+          if (playerRespawnTimer <= 0) {
+            playerRespawnTimer = 0;
+            const spawnY = Math.round(42 + world.h * 0.63);
+            player.x = playerTeam === 0 ? 420 : world.w - 420;
+            player.y = spawnY;
+            player.hp = playerChar.tbHp;
+            player.invuln = 2.5;
+            bullets.length = 0;
+            burst(player.x, player.y, "#44ff88", 20);
+            floatingTexts.push({ text: "RESPAWNED!", x: player.x, y: player.y - 60, vy: -40, life: 1.5, maxLife: 1.5, size: 20, color: "#44ff88", screen: false });
+            playTone(440, 0.2, 0.05); playTone(660, 0.2, 0.1);
+          }
+        }
       }
       if (skillActive) {
         skillTimer -= dt;
@@ -2337,7 +2369,7 @@
         // 저격총(VIPER weapon 5)은 손 뗄 때 발사 — 여기서 연사 제외
         const isVIPERSniperMobile = isMobile && currentWeapon === 5 && playerChar && playerChar.id === 2;
         const mobileFireOther = isMobile && currentWeapon !== 0 && mobileControls.shoot && !isVIPERSniperMobile;
-        if (mouse.down || mobileFireRifle || mobileFireOther) fire();
+        if (!isRespawning && (mouse.down || mobileFireRifle || mobileFireOther)) fire();
       }
       // 자동 개틀링: 1초 이상 정지하면 자동 속사
       if (autoGatling && !skillActive) {
@@ -8910,7 +8942,7 @@
       facilities.length=0;
       facilities.push({ x:120,           y:Math.round(world.h*0.25), w:360, h:Math.round(world.h*0.5), hp:5000, maxHp:5000, team:0 });
       facilities.push({ x:world.w-480,   y:Math.round(world.h*0.25), w:360, h:Math.round(world.h*0.5), hp:5000, maxHp:5000, team:1 });
-      teamBattleWon=null; tbTimer=0;
+      teamBattleWon=null; tbTimer=0; playerRespawnTimer=0;
       setupAiPlayers();
       setupCrates();
       enemies.length=0;
@@ -9039,7 +9071,8 @@
     function setupAiPlayers() {
       aiPlayers.length = 0;
       const eteam = 1 - playerTeam;
-      const rx = world.w - 420;
+      // AI spawns past the right cover wall (~2276) in open midfield
+      const rx = Math.round(world.w * 0.68); // ≈2244 on 3300-wide map
       const aiSpawnY = Math.round(42 + world.h * 0.63);
       // 4개 캐릭터 중 완전 랜덤 선택
       const ci = Math.floor(Math.random() * 4);
@@ -9233,17 +9266,28 @@
 
         if (ai.isMoving) ai.walkTime = (ai.walkTime||0) + dt;
 
-        // ── Stuck 감지 → 8방향 순차 탈출 ──
+        // ── Stuck 감지 → 방향 탐색 탈출 ──
+        if (!ai.stk.stuckTotal) ai.stk.stuckTotal = 0;
         if (ai.stk.t <= 0) {
           const mv = Math.hypot(ai.x-ai.stk.x, ai.y-ai.stk.y);
-          if (mv < 6 && td > preferDist * 0.8 && ai.stk.esc <= 0) {
-            ai.stk.escA = ai.angle + Math.PI * 0.25 * (ai.stk.idx % 8);
-            if (ai.stk.idx % 2 === 1) ai.stk.escA += Math.PI;
+          if (mv < 8 && td > preferDist * 0.8 && ai.stk.esc <= 0) {
+            ai.stk.stuckTotal++;
+            // 오래 막힐수록 더 적극적으로 탈출 시도
+            const escDur = Math.min(1.0, 0.5 + ai.stk.stuckTotal * 0.08);
+            // 방향: 45도 간격 8방향 순환 + 매 4번마다 완전 랜덤
+            if (ai.stk.stuckTotal % 4 === 0) {
+              ai.stk.escA = Math.random() * Math.PI * 2;
+            } else {
+              ai.stk.escA = ai.angle + Math.PI * 0.25 * (ai.stk.idx % 8);
+              if (ai.stk.idx % 2 === 1) ai.stk.escA += Math.PI;
+            }
             ai.stk.idx = (ai.stk.idx + 1) % 8;
-            ai.stk.esc = 0.45 + Math.random() * 0.25;
+            ai.stk.esc = escDur + Math.random() * 0.3;
+          } else if (mv > 20) {
+            ai.stk.stuckTotal = Math.max(0, ai.stk.stuckTotal - 1);
           }
           ai.stk.x = ai.x; ai.stk.y = ai.y;
-          ai.stk.t = 0.35;
+          ai.stk.t = 0.30;
         }
 
         // ── 수류탄 투척 (벽 뒤 공격) ──
@@ -9333,7 +9377,15 @@
               player.hp = Math.max(0, player.hp - finalDmg);
               player.invuln = 0.08;
               shake = Math.max(shake, 5);
-              if (player.hp <= 0) { player.hp=0; if(gameMode!=="teambattle") state="dead"; }
+              if (player.hp <= 0) {
+                player.hp = 0;
+                if (gameMode !== "teambattle") state = "dead";
+                else if (playerRespawnTimer <= 0) {
+                  playerRespawnTimer = 5;
+                  floatingTexts.push({ text: "ELIMINATED!", x: player.x, y: player.y-60, vy:-40, life:1.5, maxLife:1.5, size:22, color:"#ff4444", screen:false });
+                  burst(player.x, player.y, "#ff4444", 25);
+                }
+              }
             } else if (target.alive !== undefined) {
               target.hp = Math.max(0, target.hp - wDmg);
               if (target.hp <= 0) { target.hp=0; target.alive=false; }
@@ -9357,8 +9409,8 @@
       const eTeam=1-playerTeam;
       const enemyAiAlive=aiPlayers.some(ai=>ai.team===eTeam&&ai.alive);
       if (!enemyAiAlive) { teamBattleWon="win"; return; }
-      // 내 팀 전원 사망(플레이어+AI) → 패배
-      if (player.hp<=0) {
+      // 내 팀 전원 사망(플레이어+AI) → 패배 (리스폰 대기 중이면 아직 패배 아님)
+      if (player.hp<=0 && playerRespawnTimer<=0) {
         const allyAiAlive=aiPlayers.some(ai=>ai.team===playerTeam&&ai.alive);
         if (!allyAiAlive) { teamBattleWon="lose"; }
       }
@@ -9558,9 +9610,36 @@
         ctx.shadowBlur=0;
         ctx.fillStyle=teamBattleWon==="win"?"#88ccff":"#ffaaaa";
         ctx.font=`bold ${Math.min(15,width*0.026)}px monospace`;
-        ctx.fillText(teamBattleWon==="win"?"Enemy base destroyed!":"Your base was destroyed!",width/2,height*0.545);
+        const loseMsg = facilities.some(f=>f.team===playerTeam&&f.hp<=0) ? "Your base was destroyed!" : "All teammates eliminated!";
+        ctx.fillText(teamBattleWon==="win"?"Enemy base destroyed!":loseMsg,width/2,height*0.545);
         ctx.fillStyle="#888"; ctx.font=`${Math.min(12,width*0.02)}px monospace`;
         ctx.fillText("Tap / Click to return to menu",width/2,height*0.62);
+      }
+      // 리스폰 대기 오버레이 (게임 끝나지 않은 경우에만)
+      if (playerRespawnTimer > 0 && teamBattleWon === null) {
+        ctx.fillStyle = "rgba(0,0,0,0.70)";
+        ctx.fillRect(0, 0, width, height);
+        ctx.textAlign = "center";
+        const secs = Math.ceil(playerRespawnTimer);
+        // 붉은 ELIMINATED 텍스트
+        ctx.shadowColor = "#ff3333"; ctx.shadowBlur = 32;
+        ctx.fillStyle = "#ff4444";
+        ctx.font = `bold ${Math.min(48, width*0.07)}px Arial Black,Impact,Arial`;
+        ctx.fillText("ELIMINATED", width/2, height*0.38);
+        ctx.shadowBlur = 0;
+        // 카운트다운
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `bold ${Math.min(28, width*0.04)}px monospace`;
+        ctx.fillText(`RESPAWNING IN  ${secs}s`, width/2, height*0.49);
+        // 펄스 원
+        const pulse = 0.6 + 0.4*Math.sin(now*Math.PI*2);
+        ctx.strokeStyle = `rgba(255,80,80,${pulse})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(width/2, height*0.605, 26 + pulse*8, 0, Math.PI*2);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(255,80,80,${pulse*0.5})`;
+        ctx.fill();
       }
       ctx.restore();
     }

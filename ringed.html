@@ -9643,11 +9643,40 @@
         ctx.fillStyle="#ffaaaa"; ctx.font="bold 9px monospace"; ctx.textAlign="center";
         ctx.fillText(`RED  ${Math.ceil(red.hp)}/${red.maxHp}`,rx+barW/2,4);
       }
-      // Team AI count
-      const ba=aiPlayers.filter(a=>a.team===0&&a.alive).length;
-      const ra=aiPlayers.filter(a=>a.team===1&&a.alive).length;
-      ctx.fillStyle="#6688aa"; ctx.font="8px monospace"; ctx.textAlign="center";
-      ctx.fillText(`[BLUE ${playerTeam===0?ba+1:ba}] vs [RED ${playerTeam===1?ra+1:ra}]`,cx,26);
+      // ── 팀원 생존 아이콘 ──
+      // 각 팀 구성원(플레이어+AI)을 소형 원으로 표시, 사망 시 X
+      const blueMembers = [
+        { alive: playerTeam===0 ? (player.hp>0||playerRespawnTimer>0) : false, isPlayer: playerTeam===0 },
+        ...aiPlayers.filter(a=>a.team===0).map(a=>({ alive:a.alive, isPlayer:false }))
+      ].filter((_, i, arr) => playerTeam===0 ? true : i < arr.length);
+      const redMembers = [
+        { alive: playerTeam===1 ? (player.hp>0||playerRespawnTimer>0) : false, isPlayer: playerTeam===1 },
+        ...aiPlayers.filter(a=>a.team===1).map(a=>({ alive:a.alive, isPlayer:false }))
+      ].filter((_, i, arr) => playerTeam===1 ? true : i < arr.length);
+
+      function drawMemberIcon(mx, my, alive, isPlayer, teamCol) {
+        const r = isPlayer ? 8 : 6;
+        ctx.beginPath(); ctx.arc(mx, my, r, 0, Math.PI*2);
+        ctx.fillStyle = alive ? teamCol : "rgba(60,60,60,0.8)";
+        ctx.fill();
+        if (isPlayer && alive) {
+          ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke();
+          ctx.fillStyle="#fff"; ctx.font="bold 7px monospace"; ctx.textAlign="center";
+          ctx.fillText("★", mx, my+2.5);
+        } else if (!alive) {
+          ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.stroke();
+          ctx.strokeStyle="#ff4444"; ctx.lineWidth=1.5;
+          ctx.beginPath(); ctx.moveTo(mx-3,my-3); ctx.lineTo(mx+3,my+3); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(mx+3,my-3); ctx.lineTo(mx-3,my+3); ctx.stroke();
+        }
+      }
+
+      // BLUE 아이콘: 기지바 왼쪽에 세로 배치
+      const biconX = bx - 20;
+      blueMembers.forEach((m, i) => drawMemberIcon(biconX, 13 + i * 18, m.alive, m.isPlayer, "#3366ff"));
+      // RED 아이콘: 기지바 오른쪽
+      const riconX = rx + barW + 20;
+      redMembers.forEach((m, i) => drawMemberIcon(riconX, 13 + i * 18, m.alive, m.isPlayer, "#ff3333"));
       // Win/lose overlay
       if (teamBattleWon!==null) {
         ctx.fillStyle=teamBattleWon==="win"?"rgba(0,30,100,0.58)":"rgba(80,0,0,0.58)";

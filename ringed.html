@@ -9735,8 +9735,11 @@
         ctx.shadowBlur=0;
         ctx.fillStyle=teamBattleWon==="win"?"#88ccff":"#ffaaaa";
         ctx.font=`bold ${Math.min(15,width*0.026)}px monospace`;
-        const loseMsg = facilities.some(f=>f.team===playerTeam&&f.hp<=0) ? "Your base was destroyed!" : "All teammates eliminated!";
-        ctx.fillText(teamBattleWon==="win"?"Enemy base destroyed!":loseMsg,width/2,height*0.545);
+        const eTeamKills = tbKills[1-playerTeam];
+        const winMsg = tbKills[playerTeam] >= TB_KILL_LIMIT ? `${TB_KILL_LIMIT} Kill Lead!` : "Enemy base destroyed!";
+        const loseMsg = facilities.some(f=>f.team===playerTeam&&f.hp<=0) ? "Your base was destroyed!" :
+                        eTeamKills >= TB_KILL_LIMIT ? `Enemy reached ${TB_KILL_LIMIT} kills!` : "All teammates eliminated!";
+        ctx.fillText(teamBattleWon==="win"?winMsg:loseMsg,width/2,height*0.545);
         ctx.fillStyle="#888"; ctx.font=`${Math.min(12,width*0.02)}px monospace`;
         ctx.fillText("Tap / Click to return to menu",width/2,height*0.62);
       }

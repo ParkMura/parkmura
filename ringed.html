@@ -281,6 +281,16 @@
     const deathTexts = [];
     const speechBubbles = [];
     const pickups = [];
+    // ── 킬 스트릭 + 킬 피드 + 플로팅 텍스트 ──
+    const killFeed = [];          // [{text, color, life, maxLife}]
+    const floatingTexts = [];     // [{text, x, y, vy, life, maxLife, size, color}]
+    let killStreak = 0, lastKillTime = 0;
+    let skillReadyNotified = false;
+    let skillBarFlash = 0;        // 스킬 바 깜박임 타이머
+    // ── 중립 오브젝티브 ──
+    const neutralObj = { active: false, timer: 45, capTeam: -1, capProgress: 0, x: 0, y: 0 };
+    // ── 역전 버프 표시 ──
+    const comebackMsg = { life: 0 };
     const props = [];
     const walls = [];
     const doors = [];
@@ -952,6 +962,11 @@
       crates.length = 0;
       teamBattleWon = null;
       tbTimer = 0;
+      killFeed.length = 0; floatingTexts.length = 0;
+      killStreak = 0; lastKillTime = 0; skillReadyNotified = false; skillBarFlash = 0;
+      neutralObj.active = false; neutralObj.timer = 45; neutralObj.capTeam = -1;
+      neutralObj.capProgress = 0; neutralObj.x = world.w/2; neutralObj.y = world.h/2;
+      comebackMsg.life = 0;
 
       buildFacilityMap();
       if (!usingCustomMap) {
@@ -1429,9 +1444,9 @@
         playSfx("playerGun", 0.94 + Math.random() * 0.08);
         const hit = raycastShot(sx, sy, dx, dy, 980);
         tracers.push({ x1: sx, y1: sy, x2: hit.x, y2: hit.y, life: 0.09, maxLife: 0.09 });
-        if (hit.enemy) { hit.enemy.hp -= Math.round(44 * (playerChar.id === 3 ? 0.8 : 1) * (rageActive ? 2 : 1)); burst(hit.x, hit.y, "#9f2a24", 5); skillEnergy = Math.min(1, skillEnergy + 0.125); }
+        if (hit.enemy) { const d=Math.round(44*(playerChar.id===3?0.8:1)*(rageActive?2:1)*(player.dmgBuff||1)); hit.enemy.hp-=d; burst(hit.x,hit.y,"#9f2a24",5); skillEnergy=Math.min(1,skillEnergy+0.125); addFloatText(d,hit.x,hit.y,"#ff6644",13); }
         else if (hit.solid) { burst(hit.x, hit.y, "#f4efe8", 5); hitWallCorner(hit.x, hit.y, 0.25, 28); }
-        else applyTBHit(hit, Math.round(44 * (rageActive ? 2 : 1)));
+        else applyTBHit(hit, Math.round(44 * (rageActive ? 2 : 1) * (player.dmgBuff||1)));
         flashes.push({ x: sx + dx * 18, y: sy + dy * 18, angle: player.angle, life: 0.075, maxLife: 0.075 });
         for (let i = 0; i < 4; i++) {
           particles.push({ x: sx, y: sy,
@@ -2252,7 +2267,50 @@
       }
       // 패시브 스킬 에너지: 초당 1%
       if (!skillActive && !missileCharging && skillEnergy < 1) {
+        const prevSE = skillEnergy;
         skillEnergy = Math.min(1, skillEnergy + dt * 0.01);
+        // 스킬 충전 완료 알림
+        if (prevSE < 1.0 && skillEnergy >= 1.0 && !skillReadyNotified) {
+          skillReadyNotified = true; skillBarFlash = 1.2;
+          floatingTexts.push({ text: "▶ SKILL READY! [E]", x: player.x, y: player.y - 55, vy: -30, life: 2.0, maxLife: 2.0, size: 15, color: "#cc88ff", screen: false });
+          playTone(660, 0.18, 0.08); playTone(880, 0.18, 0.12);
+        }
+      } else {
+        skillReadyNotified = false;
+      }
+      skillBarFlash = Math.max(0, skillBarFlash - dt);
+      // 플로팅 텍스트 + 킬 피드 업데이트
+      for (let i = floatingTexts.length - 1; i >= 0; i--) { floatingTexts[i].life -= dt; if (floatingTexts[i].life <= 0) floatingTexts.splice(i, 1); }
+      for (let i = killFeed.length - 1; i >= 0; i--) { killFeed[i].life -= dt; if (killFeed[i].life <= 0) killFeed.splice(i, 1); }
+      // 중립 오브젝티브 업데이트 (팀배틀)
+      if (gameMode === "teambattle") {
+        neutralObj.timer -= dt;
+        if (neutralObj.timer <= 0 && !neutralObj.active) {
+          neutralObj.active = true; neutralObj.timer = 0;
+          neutralObj.x = world.w/2 + (Math.random()-0.5)*200;
+          neutralObj.y = world.h/2 + (Math.random()-0.5)*200;
+          neutralObj.capProgress = 0; neutralObj.capTeam = -1;
+          floatingTexts.push({ text: "⚡ POWER OBJECTIVE SPAWNED!", x: neutralObj.x, y: neutralObj.y - 60, vy: -20, life: 2.5, maxLife: 2.5, size: 16, color: "#FFD700", screen: false });
+        }
+        if (neutralObj.active) {
+          const pd = Math.hypot(player.x - neutralObj.x, player.y - neutralObj.y);
+          if (pd < 80) {
+            neutralObj.capProgress = Math.min(1, neutralObj.capProgress + dt / 3.5);
+            if (neutralObj.capProgress >= 1) {
+              neutralObj.active = false; neutralObj.timer = 55;
+              // 플레이어 팀 15초 버프
+              player.speedBuff = (player.speedBuff || 0); player.dmgBuff = 1.25;
+              player.buffTimer = 15.0;
+              floatingTexts.push({ text: "⚡ POWER UP! +25% DMG 15s", x: neutralObj.x, y: neutralObj.y - 50, vy: -25, life: 2.5, maxLife: 2.5, size: 16, color: "#FFD700", screen: false });
+              burst(neutralObj.x, neutralObj.y, "#FFD700", 35);
+              shake = Math.max(shake, 8);
+            }
+          } else {
+            neutralObj.capProgress = Math.max(0, neutralObj.capProgress - dt * 0.5);
+          }
+        }
+        // 버프 타이머
+        if (player.buffTimer > 0) { player.buffTimer -= dt; if (player.buffTimer <= 0) { player.buffTimer = 0; player.dmgBuff = 1.0; } }
       }
       if (skillActive) {
         skillTimer -= dt;
@@ -2692,13 +2750,12 @@
         }
 
         if (e.hp <= 0) {
-          burst(e.x, e.y, "#75a64b", 16);
+          burst(e.x, e.y, "#75a64b", 22);
           addCorpse(e);
           maybeDropPotion(e.x, e.y);
           addKillLight(e.x, e.y);
           enemies.splice(i, 1);
-          kills++;
-          skillEnergy = Math.min(1, skillEnergy + 0.125);
+          onKill(e.x, e.y, playerChar.name, "ENEMY");
         }
       }
 
@@ -2938,6 +2995,34 @@
         angle: -0.1 + (Math.random() - 0.5) * 0.18
       });
       if (deathTexts.length > 18) deathTexts.shift();
+    }
+
+    // ── 킬 처리: 스트릭 + 피드 + 플로팅 텍스트 ──
+    function onKill(x, y, killerName, victimName) {
+      const now = performance.now();
+      if (now - lastKillTime < 2800) killStreak++;
+      else killStreak = 1;
+      lastKillTime = now;
+      kills++;
+      skillEnergy = Math.min(1, skillEnergy + 0.125);
+      // 스트릭 메시지
+      const streakLabels = ["", "", "DOUBLE KILL!", "TRIPLE KILL!", "QUAD KILL!", "RAMPAGE!!!"];
+      const sLabel = killStreak >= 2 ? (streakLabels[Math.min(killStreak, 5)] || "GODLIKE!!!") : "";
+      if (sLabel) {
+        const sz = Math.min(28, 18 + killStreak * 2);
+        floatingTexts.push({ text: sLabel, x, y: y - 20, vy: -60, life: 2.0, maxLife: 2.0, size: sz, color: killStreak >= 4 ? "#ff2222" : "#FFD700", screen: false });
+        playTone(440 + killStreak * 80, 0.25, 0.12);
+      } else {
+        floatingTexts.push({ text: "+" + Math.round(skillEnergy * 100) + " ENERGY", x, y, vy: -50, life: 1.0, maxLife: 1.0, size: 13, color: "#88ffcc", screen: false });
+      }
+      // 킬 피드 (우측 상단)
+      const kColor = "#f88";
+      killFeed.unshift({ text: (killerName || "YOU") + " ▶ " + (victimName || "ENEMY"), color: kColor, life: 3.5, maxLife: 3.5 });
+      if (killFeed.length > 5) killFeed.pop();
+    }
+
+    function addFloatText(text, x, y, color, size) {
+      floatingTexts.push({ text, x, y, vy: -48, life: 1.2, maxLife: 1.2, size: size||14, color: color||"#fff", screen: false });
     }
 
     function burst(x, y, color, count) {
@@ -7218,6 +7303,11 @@
       drawCameraButtons();
       drawMinimap();
       if (skillEnergy >= 1 && !skillActive) drawSkillButton();
+      drawKillFeed();
+      drawFloatingWorldTexts();
+      drawSkillReadyFlash();
+      drawNeutralObjHud();
+      drawComebackBuff();
     }
 
     function drawMinimap() {
@@ -7302,6 +7392,117 @@
 
     function drawGameMenuButton() {
       drawMenuButton(gameMenuButtonRect(), "MAIN", false);
+    }
+
+    // ── 킬 피드 (우측 상단) ──
+    function drawKillFeed() {
+      if (killFeed.length === 0) return;
+      ctx.save(); ctx.font = "bold 11px monospace"; ctx.textBaseline = "middle";
+      for (let i = 0; i < killFeed.length; i++) {
+        const kf = killFeed[i];
+        const a = kf.life < 1.0 ? kf.life : 1.0;
+        const y = 130 + i * 22;
+        const tw = ctx.measureText(kf.text).width + 14;
+        ctx.globalAlpha = a * 0.82;
+        ctx.fillStyle = "#000d20";
+        ctx.fillRect(width - 8 - tw, y - 9, tw, 18);
+        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+        ctx.lineWidth = 0.5; ctx.strokeRect(width - 8 - tw, y - 9, tw, 18);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = kf.color || "#ff8888";
+        ctx.textAlign = "right";
+        ctx.fillText(kf.text, width - 8, y);
+      }
+      ctx.globalAlpha = 1; ctx.restore();
+    }
+
+    // ── 플로팅 텍스트 (월드 좌표 → 화면 변환) ──
+    function drawFloatingWorldTexts() {
+      if (floatingTexts.length === 0) return;
+      ctx.save();
+      for (const ft of floatingTexts) {
+        const a = ft.life / ft.maxLife;
+        const elapsed = ft.maxLife - ft.life;
+        const sy_off = ft.vy * elapsed;
+        let sx, sy;
+        if (ft.screen) {
+          sx = ft.x; sy = ft.y + sy_off;
+        } else {
+          sx = (ft.x - camera.x) * camera.zoom + width / 2;
+          sy = (ft.y - camera.y) * camera.zoom + height / 2 + sy_off;
+        }
+        ctx.globalAlpha = Math.min(1, a * 1.8);
+        ctx.font = `bold ${ft.size || 14}px monospace`;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = 3;
+        ctx.strokeText(ft.text, sx, sy);
+        ctx.fillStyle = ft.color || "#ffffff";
+        ctx.fillText(ft.text, sx, sy);
+      }
+      ctx.globalAlpha = 1; ctx.restore();
+    }
+
+    // ── 스킬 충전 완료 화면 알림 ──
+    function drawSkillReadyFlash() {
+      if (skillBarFlash <= 0 || skillActive) return;
+      const pulse = 0.6 + 0.4 * Math.abs(Math.sin(performance.now() / 1000 * 6));
+      ctx.save();
+      ctx.globalAlpha = (skillBarFlash / 1.2) * pulse;
+      ctx.fillStyle = "rgba(100,0,160,0.75)";
+      const bx = width / 2 - 65, by = height - 90;
+      ctx.fillRect(bx, by, 130, 24);
+      ctx.strokeStyle = "#cc88ff"; ctx.lineWidth = 1.5;
+      ctx.strokeRect(bx, by, 130, 24);
+      ctx.fillStyle = "#ee88ff"; ctx.font = "bold 13px monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("▶  SKILL READY!  [E]", width / 2, by + 12);
+      ctx.globalAlpha = 1; ctx.restore();
+    }
+
+    // ── 중립 오브젝티브 HUD ──
+    function drawNeutralObjHud() {
+      if (gameMode !== "teambattle") return;
+      // 타이머 (비활성 시)
+      if (!neutralObj.active) {
+        const t = Math.ceil(neutralObj.timer);
+        ctx.save();
+        ctx.font = "bold 11px monospace"; ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillRect(width / 2 - 50, height - 32, 100, 18);
+        ctx.fillStyle = "#aaaaff";
+        ctx.fillText("⚡ OBJ IN " + t + "s", width / 2, height - 20);
+        ctx.restore();
+      }
+      // 채널링 바 (근처에 있을 때)
+      if (neutralObj.active && neutralObj.capProgress > 0) {
+        ctx.save();
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(width/2 - 55, height - 38, 110, 16);
+        ctx.fillStyle = "#FFD700";
+        ctx.fillRect(width/2 - 53, height - 36, 106 * neutralObj.capProgress, 12);
+        ctx.strokeStyle = "#FFD700"; ctx.lineWidth = 1;
+        ctx.strokeRect(width/2 - 55, height - 38, 110, 16);
+        ctx.fillStyle = "#fff"; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+        ctx.fillText("CAPTURING...", width / 2, height - 28);
+        ctx.restore();
+      }
+    }
+
+    // ── 역전 버프 표시 (기지 HP <30%) ──
+    function drawComebackBuff() {
+      if (gameMode !== "teambattle") return;
+      const myBase = facilities.find(f => f.team === playerTeam);
+      if (!myBase || myBase.hp / myBase.maxHp >= 0.3) return;
+      const pulse = 0.7 + 0.3 * Math.abs(Math.sin(performance.now() / 1000 * 2));
+      ctx.save();
+      ctx.globalAlpha = pulse * 0.9;
+      ctx.strokeStyle = "#ff3333"; ctx.lineWidth = 4;
+      ctx.strokeRect(2, 2, width - 4, height - 4);
+      ctx.fillStyle = "rgba(200,0,0,0.12)";
+      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = "#ff6644"; ctx.font = "bold 14px monospace";
+      ctx.textAlign = "center"; ctx.fillText("⚡ LAST STAND +25% DMG", width / 2, 52);
+      ctx.globalAlpha = 1; ctx.restore();
     }
 
     function specialForcesToggleRect() {
@@ -9166,16 +9367,24 @@
     function applyTBHit(hit, dmg) {
       if (!hit||gameMode!=="teambattle") return;
       if (hit.aiPlayer) {
-        if (hit.aiPlayer.team === playerTeam) return; // 아군 AI는 피격 제외
-        hit.aiPlayer.hp -= dmg; burst(hit.x, hit.y, "#ffaa44", 5);
+        if (hit.aiPlayer.team === playerTeam) return;
+        const isCrit = dmg >= 80;
+        hit.aiPlayer.hp -= dmg; burst(hit.x, hit.y, "#ffaa44", isCrit ? 10 : 5);
         skillEnergy = Math.min(1, skillEnergy + dmg / 1000);
-        if (hit.aiPlayer.hp <= 0) { hit.aiPlayer.hp = 0; hit.aiPlayer.alive = false; }
+        addFloatText(dmg, hit.x, hit.y, isCrit ? "#FFD700" : "#ff8844", isCrit ? 20 : 14);
+        if (hit.aiPlayer.hp <= 0) {
+          hit.aiPlayer.hp = 0; hit.aiPlayer.alive = false;
+          onKill(hit.x, hit.y, playerChar.name, hit.aiPlayer.name || "AI");
+          burst(hit.x, hit.y, "#ff6622", 22);
+        }
       } else if (hit.facility) {
         hit.facility.hp = Math.max(0, hit.facility.hp - dmg);
         burst(hit.x, hit.y, hit.facility.team === 1 ? "#ff6644" : "#4488ff", 5);
         skillEnergy = Math.min(1, skillEnergy + dmg / 2000);
+        addFloatText(dmg, hit.x, hit.y, "#ff8844", 13);
       } else if (hit.crate) {
         hit.crate.hp -= dmg; burst(hit.x, hit.y, "#c8a030", 4);
+        addFloatText(dmg, hit.x, hit.y, "#f4c842", 12);
         if (hit.crate.hp <= 0) { hit.crate.dead = true; pickups.push({ x: hit.crate.x, y: hit.crate.y, r: 17, type: "heal", life: 8, pulse: 0 }); }
       }
     }
@@ -9265,6 +9474,39 @@
           ctx.fillStyle="rgba(0,0,0,0.6)"; ctx.fillRect(cr.x-cr.w/2,cr.y-cr.h/2-9,cr.w,6);
           ctx.fillStyle=hpFrac>0.5?"#ffcc44":"#ff6622";
           ctx.fillRect(cr.x-cr.w/2,cr.y-cr.h/2-9,cr.w*hpFrac,6);
+        }
+        ctx.restore();
+      }
+      // 중립 오브젝티브 아이콘
+      if (neutralObj.active) {
+        const t = performance.now() / 1000;
+        const pulse = 0.65 + 0.35 * Math.sin(t * 3.5);
+        const cx = neutralObj.x, cy = neutralObj.y;
+        ctx.save();
+        // 외부 발광 후광
+        const grd = ctx.createRadialGradient(cx,cy,6,cx,cy,38);
+        grd.addColorStop(0,`rgba(255,200,0,${0.55*pulse})`);
+        grd.addColorStop(1,"rgba(255,150,0,0)");
+        ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(cx,cy,38,0,Math.PI*2); ctx.fill();
+        // 회전하는 외부 링
+        ctx.save(); ctx.translate(cx,cy); ctx.rotate(t * 1.2);
+        ctx.strokeStyle=`rgba(255,220,50,${0.6+0.3*pulse})`; ctx.lineWidth=2.5;
+        ctx.setLineDash([8,5]);
+        ctx.beginPath(); ctx.arc(0,0,22,0,Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]); ctx.restore();
+        // 중앙 다이아몬드
+        ctx.fillStyle=`rgba(255,230,60,${0.85+0.15*pulse})`;
+        ctx.beginPath(); ctx.moveTo(cx,cy-13); ctx.lineTo(cx+10,cy); ctx.lineTo(cx,cy+13); ctx.lineTo(cx-10,cy); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle="#fff"; ctx.lineWidth=1.2; ctx.stroke();
+        // "⚡" 레이블
+        ctx.fillStyle="#FFD700"; ctx.font="bold 11px monospace"; ctx.textAlign="center";
+        ctx.fillText("POWER", cx, cy - 28);
+        // 채널링 원형 프로그레스
+        if (neutralObj.capProgress > 0) {
+          ctx.strokeStyle="rgba(80,80,80,0.7)"; ctx.lineWidth=4;
+          ctx.beginPath(); ctx.arc(cx,cy,18,-Math.PI/2,Math.PI*3/2); ctx.stroke();
+          ctx.strokeStyle="#FFD700"; ctx.lineWidth=4;
+          ctx.beginPath(); ctx.arc(cx,cy,18,-Math.PI/2,-Math.PI/2+Math.PI*2*neutralObj.capProgress); ctx.stroke();
         }
         ctx.restore();
       }

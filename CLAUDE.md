@@ -126,6 +126,15 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 94 | 온라인 게임 동기화 | 50ms마다 tbstate(AI/시설/상자/픽업) 브로드캐스트; 클라이언트 tbinput 전송 |
 | 95 | AI 자동 채움 | `setupAiPlayersOnline()` — 팀별 인간 수 파악 후 4명 채울 AI 자동 배정 |
 | 96 | 인간 플레이어 렌더링 | `drawRemoteNetPlayer()` — ★ 표시 + 팀 링, 캐릭터 외형 동일 적용 |
+| 97 | 킬 스트릭 / 킬 피드 | `killStreak`, `killFeed[]` — 연속 킬 보너스 메시지, 킬 피드 우상단 표시 |
+| 98 | 플로팅 데미지 숫자 | `floatingDmgNums[]` — 피격 시 숫자 떠오름, 크리티컬 빨간색·크게 |
+| 99 | 컴백 버프 | HP 30% 이하 시 이동속도+20%, 데미지+10% 자동 발동, COMEBACK! 표시 |
+| 100 | 중립 목표물(Objective) | 맵 중앙 NEXUS 크리스탈, 점령 시 팀 전체 속도+10% 버프 |
+| 101 | 팀배틀 리스폰 시스템 | 사망 시 5초 카운트다운, ELIMINATED→RESPAWNING IN Ns 오버레이, 스폰 위치 복귀 |
+| 102 | 리스폰 중 카메라 패닝 | 사망 후 카메라가 부활 위치(팀 스폰)로 부드럽게 이동 |
+| 103 | AI 스폰 위치 조정 | `setupAiPlayers()` — world.w*0.68 위치로 이동, 중앙 커버 벽 충돌 방지 |
+| 104 | AI 스터크 탈출 개선 | `stuckTotal` 카운터 + 4회마다 완전 랜덤 방향, 점진적 탈출 지속시간 |
+| 105 | playTone() 래퍼 | `playTone(freq, vol, dur)` — playToneLayer 편의 래퍼, 리스폰/알림 효과음 |
 
 ## 미구현 (요청됨)
 - 브롤스타즈식 사선 시야

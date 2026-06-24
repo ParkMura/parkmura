@@ -295,6 +295,10 @@
     let playerRespawnTimer = 0;   // >0 = respawning, 0 = alive
     let tbKills = [0, 0];         // [BLUE킬수, RED킬수]
     const TB_KILL_LIMIT = 30;     // 먼저 30킬 → 승리
+    // ── 화면 이펙트 ──
+    let screenDmgFlash = 0;       // 피격 시 빨간 화면 플래시
+    let screenKillFlash = 0;      // 킬 시 황금 화면 플래시
+    const shockRings = [];        // 충격파 링 배열
     const props = [];
     const walls = [];
     const doors = [];
@@ -970,7 +974,8 @@
       crates.length = 0;
       teamBattleWon = null;
       tbTimer = 0;
-      killFeed.length = 0; floatingTexts.length = 0;
+      killFeed.length = 0; floatingTexts.length = 0; shockRings.length = 0;
+      screenDmgFlash = 0; screenKillFlash = 0;
       killStreak = 0; lastKillTime = 0; skillReadyNotified = false; skillBarFlash = 0;
       neutralObj.active = false; neutralObj.timer = 45; neutralObj.capTeam = -1;
       neutralObj.capProgress = 0; neutralObj.x = world.w/2; neutralObj.y = world.h/2;
@@ -2340,7 +2345,9 @@
             player.hp = playerChar.tbHp;
             player.invuln = 2.5;
             bullets.length = 0;
-            burst(player.x, player.y, "#44ff88", 20);
+            burst(player.x, player.y, "#44ff88", 28);
+            addShockRing(player.x, player.y, "#44ff88", 400, 0.65, 5);
+            addShockRing(player.x, player.y, "#aaffcc", 600, 0.4, 2.5);
             floatingTexts.push({ text: "RESPAWNED!", x: player.x, y: player.y - 60, vy: -40, life: 1.5, maxLife: 1.5, size: 20, color: "#44ff88", screen: false });
             playTone(440, 0.2, 0.05); playTone(660, 0.2, 0.1);
           }
@@ -2820,6 +2827,16 @@
         if (p.solidStop && pointInsideSolid(p.x, p.y)) p.life = 0;
         if (p.life <= 0) particles.splice(i, 1);
       }
+      // 충격파 링 업데이트
+      for (let i = shockRings.length - 1; i >= 0; i--) {
+        const r = shockRings[i];
+        r.radius += r.speed * dt;
+        r.life -= dt;
+        if (r.life <= 0) shockRings.splice(i, 1);
+      }
+      // 화면 이펙트 감쇠
+      if (screenDmgFlash > 0) screenDmgFlash = Math.max(0, screenDmgFlash - dt * 2.5);
+      if (screenKillFlash > 0) screenKillFlash = Math.max(0, screenKillFlash - dt * 3);
       updatePickups(dt);
       updateSpeechBubbles(dt);
       for (let i = flashes.length - 1; i >= 0; i--) {
@@ -4905,6 +4922,20 @@
       if (isMobile && splitPanelOffsetX === 0 && currentWeapon === 3 && mobileControls.shoot) drawBombAimPreview();
       ctx.restore();
       ctx.setTransform(scale, 0, 0, scale, splitPanelOffsetX * scale, 0);
+      // ── 화면 이펙트 오버레이 ──
+      if (screenDmgFlash > 0) {
+        ctx.fillStyle = `rgba(220,30,30,${Math.min(0.45, screenDmgFlash * 0.55)})`;
+        ctx.fillRect(0, 0, width, height);
+        // 가장자리 비네팅 강화
+        const vg = ctx.createRadialGradient(width/2,height/2,height*0.2,width/2,height/2,height*0.75);
+        vg.addColorStop(0,"rgba(0,0,0,0)");
+        vg.addColorStop(1,`rgba(200,0,0,${screenDmgFlash * 0.4})`);
+        ctx.fillStyle=vg; ctx.fillRect(0,0,width,height);
+      }
+      if (screenKillFlash > 0) {
+        ctx.fillStyle = `rgba(255,210,0,${Math.min(0.25, screenKillFlash * 0.35)})`;
+        ctx.fillRect(0, 0, width, height);
+      }
       drawRaidWarningOverlay();
       if (splitPanelOffsetX > 0) {
         drawP2StatusHud();
@@ -6866,6 +6897,16 @@
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
+      }
+      // 충격파 링
+      for (const r of shockRings) {
+        const alpha = Math.max(0, r.life / r.maxLife);
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.strokeStyle = r.color;
+        ctx.lineWidth = r.width * (1 - (1 - r.life / r.maxLife) * 0.5);
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+        ctx.stroke();
       }
       ctx.globalAlpha = 1;
     }
@@ -8995,7 +9036,8 @@
       // ── 중앙 요새 (Central Fortress) ──
       // 십자 + 내부 4개 소형 엄폐물
       // ────────────────────────────────────────────────
-      const fw=70, fa=320; // 암(arm) 길이
+      // ── 중앙 요새: 십자 + 내부 방 ──
+      const fw=70, fa=240; // 팔 길이 축소(320→240): 양측 우회로 확보
       // 북쪽 암
       addWall(mX-fw/2, mY-fa-fw, fw, fa);
       // 남쪽 암
@@ -9004,12 +9046,14 @@
       addWall(mX-fa-fw, mY-fw/2, fa, fw);
       // 동쪽 암
       addWall(mX+fw,    mY-fw/2, fa, fw);
-      // 중앙 요새 내부 4개 코너 블록
-      const ci=100;
-      addWall(mX-ci-c,  mY-ci-c,  c, c);
-      addWall(mX+ci,    mY-ci-c,  c, c);
-      addWall(mX-ci-c,  mY+ci,    c, c);
-      addWall(mX+ci,    mY+ci,    c, c);
+      // 요새 내부 코너 블록 (아군/적 엄폐)
+      const ci=90;
+      addWall(mX-ci-c, mY-ci-c, c, c);
+      addWall(mX+ci,   mY-ci-c, c, c);
+      addWall(mX-ci-c, mY+ci,   c, c);
+      addWall(mX+ci,   mY+ci,   c, c);
+      // 중앙 오브젝티브 마커 (장식용 소형 블록)
+      addWall(mX-c/2, mY-c/2, c, c);
 
       // ────────────────────────────────────────────────
       // ── 4개 레인 엄폐 구조물 ──
@@ -9020,22 +9064,21 @@
       const lane3Y = Math.round(t + H*0.58 + dh/2);  // ~1434+120=1554 (스폰)
       const lane4Y = Math.round(t + H*0.81 + dh/2);  // ~1986+120=2106
 
-      // 각 레인에 대칭 L자형 엄폐물
+      // 각 레인에 대칭 엄폐물 (L형 기지측 + 중앙 분리형)
       function addLaneCover(ly, flip) {
-        const f = flip ? -1 : 1;
-        // 좌측 엄폐 (L형)
-        const lx1 = bx+t+240;
-        addWall(lx1,          ly-c*3-120, c, 120);
-        addWall(lx1,          ly+c*3,     c, 120);
-        addWall(lx1,          ly-c*2,     120*f > 0 ? 120 : c, c);  // 수평 팔
-        // 우측 엄폐 (대칭 L형)
-        const rx2 = W-bx-t-t-240;
-        addWall(rx2,          ly-c*3-120, c, 120);
-        addWall(rx2,          ly+c*3,     c, 120);
-        addWall(rx2-120+c,    ly-c*2,     120, c);
-        // 레인 중간 엄폐물 (중앙 부근)
-        addWall(mX-220,       ly-c/2, 160, c);
-        addWall(mX+60,        ly-c/2, 160, c);
+        // 좌측 기지 앞 L형
+        const lx1 = bx + t + 240;
+        addWall(lx1, ly-c*3-100, c, 100);
+        addWall(lx1, ly+c*3,     c, 100);
+        addWall(lx1, ly-c*2,     flip ? c : 100, c);
+        // 우측 기지 앞 L형 (대칭)
+        const rx2 = W - bx - t - t - 240;
+        addWall(rx2, ly-c*3-100, c, 100);
+        addWall(rx2, ly+c*3,     c, 100);
+        addWall(rx2-(flip?0:100)+c, ly-c*2, 100, c);
+        // 중앙 레인 분리형 엄폐물 — 갭(250px)이 있어 AI 통과 가능
+        addWall(mX-300,  ly-c/2, 110, c);   // 좌측 짧은 벽
+        addWall(mX+190,  ly-c/2, 110, c);   // 우측 짧은 벽 (중간 갭 80px)
       }
       addLaneCover(lane1Y, false);
       addLaneCover(lane2Y, true);
@@ -9048,13 +9091,15 @@
       const midX1 = Math.round(bx + t + (mX - bx - t) * 0.45);  // 좌 미드 (≈1175)
       const midX2 = W - midX1 - c;                                // 우 미드 대칭
 
-      // 좌측 미드 복합 - T자형
-      addWall(midX1-160, mY-c/2, 320, c);
-      addWall(midX1-c/2, mY-200, c,   200);
+      // 좌측 미드 복합 - C자형 (아래쪽 열림)
+      addWall(midX1-120, mY-c/2, 240, c);  // 수평
+      addWall(midX1-120, mY-200, c,   200); // 좌수직
+      addWall(midX1+120-c, mY-200, c, 200); // 우수직
 
-      // 우측 미드 복합 - 역T자형
-      addWall(midX2-160, mY-c/2, 320, c);
-      addWall(midX2-c/2, mY,     c,   200);
+      // 우측 미드 복합 - 역C자형 (위쪽 열림)
+      addWall(midX2-120, mY-c/2, 240, c);  // 수평
+      addWall(midX2-120, mY,     c,   200); // 좌수직
+      addWall(midX2+120-c, mY,   c,   200); // 우수직
 
       // ── 상단 사이드 룸 (레인1↔2 사이) ──
       const sideRoomY1 = Math.round((lane1Y + lane2Y) / 2);  // 레인1과2 중간
@@ -9451,6 +9496,7 @@
               player.hp = Math.max(0, player.hp - finalDmg);
               player.invuln = 0.08;
               shake = Math.max(shake, 5);
+              screenDmgFlash = Math.min(1, screenDmgFlash + finalDmg / 250);
               if (player.hp <= 0) {
                 player.hp = 0;
                 if (gameMode !== "teambattle") state = "dead";
@@ -9496,19 +9542,31 @@
       if (playerOut && allyOut) { teamBattleWon="lose"; }
     }
 
+    function addShockRing(x, y, color, speed, maxLife, width) {
+      shockRings.push({ x, y, color, speed: speed||280, maxLife: maxLife||0.5, life: maxLife||0.5, radius: 8, width: width||4 });
+    }
+
     function applyTBHit(hit, dmg) {
       if (!hit||gameMode!=="teambattle") return;
       if (hit.aiPlayer) {
         if (hit.aiPlayer.team === playerTeam) return;
         const isCrit = dmg >= 80;
-        hit.aiPlayer.hp -= dmg; burst(hit.x, hit.y, "#ffaa44", isCrit ? 10 : 5);
+        hit.aiPlayer.hp -= dmg;
+        hit.aiPlayer.hitFlash = isCrit ? 0.22 : 0.14;  // 피격 플래시
+        burst(hit.x, hit.y, isCrit ? "#FFD700" : "#ffaa44", isCrit ? 14 : 7);
         skillEnergy = Math.min(1, skillEnergy + dmg / 1000);
-        addFloatText(dmg, hit.x, hit.y, isCrit ? "#FFD700" : "#ff8844", isCrit ? 20 : 14);
+        addFloatText(dmg, hit.x, hit.y, isCrit ? "#FFD700" : "#ff8844", isCrit ? 22 : 14);
         if (hit.aiPlayer.hp <= 0) {
           hit.aiPlayer.hp = 0; hit.aiPlayer.alive = false;
           hit.aiPlayer.respawnTimer = 10;
           onKill(hit.x, hit.y, playerChar.name, hit.aiPlayer.name || "AI");
-          burst(hit.x, hit.y, "#ff6622", 22);
+          // 킬 폭발 이펙트
+          burst(hit.x, hit.y, "#ff6622", 30);
+          burst(hit.x, hit.y, "#ffdd44", 18);
+          addShockRing(hit.x, hit.y, "#ff8844", 340, 0.55, 5);
+          addShockRing(hit.x, hit.y, "#ffffff", 480, 0.35, 2.5);
+          screenKillFlash = 0.6;
+          shake = Math.max(shake, 8);
         }
       } else if (hit.facility) {
         hit.facility.hp = Math.max(0, hit.facility.hp - dmg);
@@ -9534,7 +9592,7 @@
       grd.addColorStop(0,isAlly?"rgba(60,140,255,0.22)":"rgba(255,60,60,0.22)");
       grd.addColorStop(1,"rgba(0,0,0,0)");
       ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(0,0,30,0,Math.PI*2); ctx.fill();
-      // 실제 캐릭터 외형 (drawMarineSoldier가 내부적으로 ctx 변환을 복원하지 않아 save/restore 필요)
+      // 실제 캐릭터 외형
       ctx.save();
       const charColors={ dark:pc.body, mid:pc.light, light:pc.light, red:pc.visor };
       drawMarineSoldier(24, ai.walkTime||0, ai.isMoving||false, charColors, false, false, 0);
@@ -9543,6 +9601,15 @@
       ctx.strokeStyle=isAlly?"rgba(80,160,255,0.8)":"rgba(255,60,60,0.8)";
       ctx.lineWidth=2.5;
       ctx.beginPath(); ctx.arc(0,0,27,0,Math.PI*2); ctx.stroke();
+      // 피격 플래시 (흰색 하이라이트)
+      if (ai.hitFlash > 0) {
+        ai.hitFlash -= 0.016;  // 매 프레임 감소 (dt 없이 근사)
+        const hf = Math.max(0, ai.hitFlash);
+        ctx.globalAlpha = hf * 0.7;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
       ctx.restore();
       // HP바 + 이름
       const hpFrac=Math.max(0,ai.hp/ai.maxHp), bw=44;

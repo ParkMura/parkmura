@@ -1661,8 +1661,8 @@
       if (skillEnergy < 1 || skillActive || missileCharging) return;
       const st = playerChar.skillType;
       if (st === "stun_aura") {
-        // MEDIC: 주변 적 마취 (산탄총 사거리 30% = 118px)
-        const stunR = 392 * 0.3;
+        // MEDIC: 주변 적 마취 (220px — 팀배틀 게임 밸런스)
+        const stunR = 220;
         for (const e of enemies) {
           if (Math.hypot(e.x - player.x, e.y - player.y) < stunR) {
             e.slowTimer = 3.0;
@@ -2458,13 +2458,16 @@
       }
       // MEDIC 힐 오라: 정지 시 자가치유 초당 10% HP + 주변 아군 힐
       if (playerChar.gender === "female") {
-        const healR = 392 * 0.3; // 산탄총 사거리의 30%
+        const healR = 220; // 힐 범위 220px
+        player.medicHealActive = false;
+        player.medicHealRadius = healR;
         if (!player.isMoving) {
           healAuraTimer += dt;
           if (healAuraTimer >= 1.0) {
             healAuraTimer = 0;
             const maxHp = gameMode === "teambattle" ? playerChar.tbHp : Math.round(100 * playerChar.hpMult);
             player.hp = Math.min(maxHp, player.hp + Math.round(maxHp * 0.1));
+            player.medicHealActive = true;
           }
         } else { healAuraTimer = 0; }
         // 주변 아군 힐 (멀티플레이어)
@@ -2475,9 +2478,25 @@
           if (healAuraTimer._allyHealTimer >= 1.0) {
             healAuraTimer._allyHealTimer = 0;
             ally.hp = Math.min(100, (ally.hp || 0) + 10);
+            player.medicHealActive = true;
           }
         }
-      } else { healAuraTimer = 0; }
+        // 팀배틀: 주변 아군 AI 힐
+        if (gameMode === "teambattle") {
+          for (const ai of aiPlayers) {
+            if (!ai.alive || ai.team !== playerTeam) continue;
+            if (Math.hypot(ai.x - player.x, ai.y - player.y) < healR) {
+              ai._healTimer = (ai._healTimer || 0) + dt;
+              if (ai._healTimer >= 1.0) {
+                ai._healTimer = 0;
+                ai.hp = Math.min(ai.maxHp, ai.hp + Math.round(ai.maxHp * 0.1));
+                burst(ai.x, ai.y - 20, "#44ff88", 4);
+                player.medicHealActive = true;
+              }
+            } else { ai._healTimer = 0; }
+          }
+        }
+      } else { healAuraTimer = 0; player.medicHealActive = false; }
       mobileControls.bomb = false;
       if (mobileControls.swap) {
         const weps = [playerChar.primaryW, playerChar.secondaryW];
@@ -5562,6 +5581,38 @@
     }
 
     function drawPlayer() {
+      // MEDIC 힐 오라 — 정지 중 힐 진행시 녹색 파동 링 (같은팀만 보임, 플레이어=자신)
+      if (playerChar.gender === "female" && player.medicHealActive) {
+        const now = performance.now() * 0.001;
+        const pulse = 0.55 + 0.45 * Math.sin(now * 3.2);
+        const healR = player.medicHealRadius || 220;
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        // 바깥 소프트 오라
+        const auraGrd = ctx.createRadialGradient(0, 0, healR * 0.6, 0, 0, healR);
+        auraGrd.addColorStop(0, `rgba(50,255,120,${0.10 * pulse})`);
+        auraGrd.addColorStop(1, "rgba(50,255,120,0)");
+        ctx.fillStyle = auraGrd;
+        ctx.beginPath(); ctx.arc(0, 0, healR, 0, Math.PI * 2); ctx.fill();
+        // 중간 링
+        ctx.strokeStyle = `rgba(80,255,140,${0.50 * pulse})`;
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "#44ff88"; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(0, 0, healR * 0.85, 0, Math.PI * 2); ctx.stroke();
+        // 내부 링 (빠른 펄스)
+        const innerPulse = 0.5 + 0.5 * Math.sin(now * 5.5);
+        ctx.strokeStyle = `rgba(140,255,180,${0.70 * innerPulse})`;
+        ctx.lineWidth = 1.5;
+        ctx.shadowBlur = 6;
+        ctx.beginPath(); ctx.arc(0, 0, 38, 0, Math.PI * 2); ctx.stroke();
+        // 힐 텍스트
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = `rgba(100,255,160,${0.85 * pulse})`;
+        ctx.font = "bold 11px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("✚ HEAL", 0, -46);
+        ctx.restore();
+      }
       ctx.save();
       ctx.translate(player.x, player.y);
       if (recoilAmt > 0) {
@@ -9186,24 +9237,21 @@
     function setupAiPlayers() {
       aiPlayers.length = 0;
       const W = world.w, H = world.h;
-
-      // 적팀 AI 3명: 플레이어가 선택하지 않은 캐릭터 3종
+      // 기지벽 x=700 기준 — 본진 스폰 좌표
+      // BLUE 본진: x=350~580, RED 본진: x=W-580~W-350
+      const spawnY = Math.round(42 + H * 0.63); // 플레이어와 동일한 Y
+      const blueSpawnX = 430;
+      const redSpawnX  = W - 430;
       const eteam = 1 - playerTeam;
       const enemyChars = [0, 1, 2, 3].filter(i => i !== playerChar.id);
-      // 적팀 스폰: 플레이어 팀이 BLUE(0)면 오른쪽, RED(1)면 왼쪽
-      const exBase = eteam === 1 ? Math.round(W * 0.68) : Math.round(W * 0.32);
-      // 3 레인 Y 좌표
-      const laneYs = [
-        Math.round(42 + H * 0.19),   // 상단 레인
-        Math.round(H * 0.50),          // 중앙 레인
-        Math.round(42 + H * 0.78),    // 하단 레인
-      ];
-      const faceAngle = eteam === 1 ? Math.PI : 0; // 적팀은 플레이어 방향 향함
+      const faceAngle = eteam === 1 ? Math.PI : 0;
 
+      // 적팀 AI 3명 — 적팀 본진에서 스폰
+      const eSpawnX = eteam === 1 ? redSpawnX : blueSpawnX;
       enemyChars.forEach((ci, i) => {
         const ch = CHAR_DEFS[ci];
-        const sx = exBase + (Math.random() - 0.5) * 80;
-        const sy = laneYs[i] + (Math.random() - 0.5) * 60;
+        const sx = eSpawnX + (Math.random() - 0.5) * 80;
+        const sy = spawnY + (i - 1) * 180 + (Math.random() - 0.5) * 40;
         aiPlayers.push({
           team: eteam, charIdx: ci, x: sx, y: sy,
           hp: ch.tbHp, maxHp: ch.tbHp,
@@ -9221,20 +9269,21 @@
           aiReactCd: 0.4 + Math.random() * 0.4,
           aiHurtTimer: 0, aiLastHp: ch.tbHp,
           aiPeekDir: (Math.random() < 0.5 ? 1 : -1), aiPeekTimer: 0,
-          aiLastTargetId: null,
+          aiLastTargetId: null, stunTimer: 0,
         });
       });
 
-      // 아군 AI 2명: 플레이어 팀, 랜덤 2캐릭터
+      // 아군 AI 2명 — 플레이어 본진에서 스폰
+      const aSpawnX = playerTeam === 0 ? blueSpawnX : redSpawnX;
       const allyPool = [...enemyChars];
       for (let i = 0; i < 2; i++) {
         const ci = allyPool.splice(Math.floor(Math.random() * allyPool.length), 1)[0];
         const ch = CHAR_DEFS[ci];
-        const axBase = playerTeam === 0 ? Math.round(W * 0.32) : Math.round(W * 0.68);
-        const aly = laneYs[i === 0 ? 0 : 2] + (Math.random() - 0.5) * 60;
         const allyFace = playerTeam === 0 ? 0 : Math.PI;
+        const sx = aSpawnX + (Math.random() - 0.5) * 80;
+        const sy = spawnY + (i === 0 ? -180 : 180) + (Math.random() - 0.5) * 40;
         aiPlayers.push({
-          team: playerTeam, charIdx: ci, x: axBase, y: aly,
+          team: playerTeam, charIdx: ci, x: sx, y: sy,
           hp: ch.tbHp, maxHp: ch.tbHp,
           angle: allyFace, speed: 170 * ch.speedMult,
           shootCd: 1.2 + Math.random() * 0.6,
@@ -9242,15 +9291,15 @@
           alive: true, col: ch.col, build: ch.build, name: ch.name,
           r: 16, collisionR: 16,
           strafeDir: 1, strafeTimer: 0,
-          stuckTimer: 0, lastX: axBase, lastY: aly,
-          stk: { x: axBase, y: aly, t: 0, esc: 0, escA: 0, idx: 0, stuckTotal: 0 },
+          stuckTimer: 0, lastX: sx, lastY: sy,
+          stk: { x: sx, y: sy, t: 0, esc: 0, escA: 0, idx: 0, stuckTotal: 0 },
           respawnTimer: 0,
           aiWeapon: 'rifle', aiBombCd: 2.0 + Math.random(),
           aiBurstLeft: 0, aiBurstPause: 0,
           aiReactCd: 0.4 + Math.random() * 0.4,
           aiHurtTimer: 0, aiLastHp: ch.tbHp,
           aiPeekDir: (Math.random() < 0.5 ? 1 : -1), aiPeekTimer: 0,
-          aiLastTargetId: null,
+          aiLastTargetId: null, stunTimer: 0,
         });
       }
     }
@@ -9286,11 +9335,13 @@
             ai.respawnTimer = 0;
             ai.alive = true;
             ai.hp = ai.maxHp;
+            ai.stunTimer = 0;
             const W = world.w, H = world.h;
-            const spawnX = ai.team === 0 ? Math.round(W * 0.32) : Math.round(W * 0.68);
-            const laneYs = [Math.round(42 + H * 0.19), Math.round(H * 0.50), Math.round(42 + H * 0.78)];
+            // 본진(기지) 스폰 — 벽 안쪽
+            const spawnX = ai.team === 0 ? 430 : W - 430;
+            const spawnY = Math.round(42 + H * 0.63);
             ai.x = spawnX + (Math.random() - 0.5) * 80;
-            ai.y = laneYs[Math.floor(Math.random() * 3)] + (Math.random() - 0.5) * 60;
+            ai.y = spawnY + (Math.random() - 0.5) * 200;
             ai.invuln = 2.0;
             ai.stk = { x: ai.x, y: ai.y, t: 0, esc: 0, escA: 0, idx: 0, stuckTotal: 0 };
             burst(ai.x, ai.y, ai.team===0 ? "#4488ff" : "#ff4444", 14);
@@ -9641,6 +9692,17 @@
     function drawAiPlayer(ai) {
       const ch=CHAR_DEFS[ai.charIdx||0];
       const isAlly=(ai.team===playerTeam);
+      // 적팀 AI: 플레이어 또는 아군 AI 중 누구라도 LOS 확보해야 표시
+      if (!isAlly) {
+        let visible = hasLOS(player.x, player.y, ai.x, ai.y);
+        if (!visible) {
+          for (const ally of aiPlayers) {
+            if (!ally.alive || ally.team !== playerTeam) continue;
+            if (hasLOS(ally.x, ally.y, ai.x, ai.y)) { visible = true; break; }
+          }
+        }
+        if (!visible) return;
+      }
       const pc=ch.col;
       ctx.save();
       ctx.translate(ai.x,ai.y);
@@ -9675,7 +9737,47 @@
         ctx.beginPath(); ctx.arc(0, 0, 32, 0, Math.PI*2); ctx.fill();
         ctx.globalAlpha = 1;
       }
+      // MEDIC 스킨 힐 오라 (아군 AI가 힐 받는 중 표시 — 플레이어와 같은팀만 볼 수 있음)
+      if (isAlly && ai._healTimer > 0) {
+        const now = performance.now() * 0.001;
+        const p = 0.6 + 0.4 * Math.sin(now * 4.0);
+        ctx.strokeStyle = `rgba(80,255,140,${0.75 * p})`;
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "#44ff88"; ctx.shadowBlur = 12;
+        ctx.beginPath(); ctx.arc(0, 0, 38, 0, Math.PI * 2); ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+      // 마취 이펙트 (stunTimer > 0 → 보라색 스웰 + STUNNED 라벨)
+      if (ai.stunTimer > 0) {
+        const now = performance.now() * 0.001;
+        const sw = 0.5 + 0.5 * Math.sin(now * 6.0);
+        ctx.strokeStyle = `rgba(160,80,255,${0.85 * sw})`;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = "#aa44ff"; ctx.shadowBlur = 14;
+        ctx.beginPath(); ctx.arc(0, 0, 36, 0, Math.PI * 2); ctx.stroke();
+        ctx.shadowBlur = 0;
+        // 회전하는 별표 파티클 표현 (소용돌이)
+        const rots = [0, Math.PI*2/3, Math.PI*4/3];
+        for (const base of rots) {
+          const angle = base + now * 2.5;
+          const px2 = Math.cos(angle) * 40, py2 = Math.sin(angle) * 40;
+          ctx.fillStyle = `rgba(200,140,255,${0.7 * sw})`;
+          ctx.beginPath(); ctx.arc(px2, py2, 4, 0, Math.PI * 2); ctx.fill();
+        }
+      }
       ctx.restore();
+      // 마취 라벨 (월드 좌표 — restore 후)
+      if (ai.stunTimer > 0) {
+        const now = performance.now() * 0.001;
+        const p = 0.7 + 0.3 * Math.sin(now * 4.5);
+        ctx.save();
+        ctx.globalAlpha = p;
+        ctx.fillStyle = "#cc88ff";
+        ctx.font = "bold 10px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("★ STUNNED", ai.x, ai.y - 68);
+        ctx.restore();
+      }
       // HP바 + 이름 (더 크게)
       const hpFrac=Math.max(0,ai.hp/ai.maxHp), bw=60;
       const ly=ai.y-42;

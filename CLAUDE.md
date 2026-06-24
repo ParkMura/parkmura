@@ -146,6 +146,12 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 114 | AI 피격 화이트 플래시 | `ai.hitFlash` — 피격 시 0.7 alpha 흰 원 오버레이, 16ms 감소 |
 | 115 | 킬 폭발 강화 | 더블 burst(30+18) + 이중 충격파링 + shake=8 + 황금 화면 플래시 |
 | 116 | 팀배틀 맵 밸런스 | 중앙 요새 팔 320→240, 레인 엄폐 160→110+80gap+110, 미드 T→C형 엄폐 |
+| 117 | AI 스폰 위치 수정 | `setupAiPlayers()` — 본진 내부(blueX=430, redX=W-430) 스폰, 리스폰도 동일 |
+| 118 | MEDIC 힐 오라 시각화 | `drawPlayer()` — 정지+힐 시 녹색 펄스 링 + "✚ HEAL" 텍스트, 힐 범위 118→220px |
+| 119 | 아군 AI 힐 링 | `drawAiPlayer()` — `ai._healTimer > 0` 시 녹색 글로우 링 (같은팀만 표시) |
+| 120 | 마취 시각 효과 | `drawAiPlayer()` — `ai.stunTimer > 0` 시 보라색 링+소용돌이 파티클+"★ STUNNED" 라벨 |
+| 121 | 마취 범위 밸런스 | `activateSkill()` stun_aura 범위 117.6px → 220px |
+| 122 | 팀 공유 시야 | `drawAiPlayer()` — 적 AI는 플레이어 또는 아군 AI LOS 확보 시에만 표시 |
 
 ## 미구현 (요청됨)
 - 브롤스타즈식 사선 시야

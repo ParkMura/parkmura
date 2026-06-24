@@ -3239,9 +3239,18 @@
       const _p2cam = (mp.role === "host" && player2) ? player2 : (mp.role === "client" && remotePlayer ? remotePlayer : null);
       const isSplitScreen = !!_p2cam;
       const effectiveWidth = isSplitScreen ? width / 2 : width;
-      let target = { x: player.x, y: player.y };
+      // 팀배틀 리스폰 중: 카메라를 스폰 지점으로 이동
+      let target;
+      const _respawning = gameMode === "teambattle" && playerRespawnTimer > 0;
+      if (_respawning) {
+        const _spawnY = Math.round(42 + world.h * 0.63);
+        const _spawnX = playerTeam === 0 ? 420 : world.w - 420;
+        target = { x: _spawnX, y: _spawnY };
+      } else {
+        target = { x: player.x, y: player.y };
+      }
       camera.zoom = cameraMode === 2 ? 0.81 : 0.9;
-      if (cameraMode === 2) {
+      if (cameraMode === 2 && !_respawning) {
         target = smartCameraTarget(worldMouse);
       }
       const viewW = effectiveWidth / camera.zoom;

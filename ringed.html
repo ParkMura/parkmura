@@ -2363,11 +2363,17 @@
           shootCooldown = 0.081;
           const hawkDx = Math.cos(player.angle), hawkDy = Math.sin(player.angle);
           const hawkSx = player.x + hawkDx * 34, hawkSy = player.y + hawkDy * 34;
-          const hawkHit = raycastShot(hawkSx, hawkSy, hawkDx, hawkDy, 1200);
-          tracers.push({ x1: hawkSx, y1: hawkSy, x2: hawkHit.x, y2: hawkHit.y, life: 0.07, maxLife: 0.07 });
-          if (hawkHit.enemy) { hawkHit.enemy.hp -= 44; burst(hawkHit.x, hawkHit.y, "#9f2a24", 4); }
-          else if (gameMode === "teambattle") applyTBHit(hawkHit, 44);
-          else if (hawkHit.solid) burst(hawkHit.x, hawkHit.y, "#f4efe8", 3);
+          // 캐릭터 폭(반지름 24px) 만큼 수직으로 3발 병렬 직선 발사
+          const perpX = -hawkDy, perpY = hawkDx;
+          const parallelOffsets = [-20, 0, 20];
+          for (const off of parallelOffsets) {
+            const ox = hawkSx + perpX * off, oy = hawkSy + perpY * off;
+            const hawkHit = raycastShot(ox, oy, hawkDx, hawkDy, 1200);
+            tracers.push({ x1: ox, y1: oy, x2: hawkHit.x, y2: hawkHit.y, life: 0.07, maxLife: 0.07 });
+            if (hawkHit.enemy) { hawkHit.enemy.hp -= 15; burst(hawkHit.x, hawkHit.y, "#9f2a24", 3); skillEnergy = Math.min(1, skillEnergy + 0.04); }
+            else if (gameMode === "teambattle") applyTBHit(hawkHit, 15);
+            else if (hawkHit.solid) burst(hawkHit.x, hawkHit.y, "#f4efe8", 2);
+          }
           flashes.push({ x: hawkSx + hawkDx * 20, y: hawkSy + hawkDy * 20, angle: player.angle, life: 0.06, maxLife: 0.06 });
           playSfx("playerGun", 0.9 + Math.random() * 0.1);
           recoilAmt = 1.0; shake = Math.max(shake, 3);

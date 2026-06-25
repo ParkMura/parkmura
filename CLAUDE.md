@@ -152,6 +152,15 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 120 | 마취 시각 효과 | `drawAiPlayer()` — `ai.stunTimer > 0` 시 보라색 링+소용돌이 파티클+"★ STUNNED" 라벨 |
 | 121 | 마취 범위 밸런스 | `activateSkill()` stun_aura 범위 117.6px → 220px |
 | 122 | 팀 공유 시야 | `drawAiPlayer()` — 적 AI는 플레이어 또는 아군 AI LOS 확보 시에만 표시 |
+| 123 | 기관총 발사속도 -10% | `fire()` weapon 0 — `shootCooldown = 0.11 → 0.121` (MEDIC은 0.109으로 오히려 10% 빠름) |
+| 124 | 기관총 거리 감쇠 | `fire()` weapon 0 — `distFactor = max(0.40, 1 - hitDist/980 * 0.60)` 로 원거리 40%까지 감소 |
+| 125 | MEDIC 기관총 데미지 | `fire()` weapon 0 — `playerChar.id===3` 배수 0.8→0.75 (기관총 44 vs 권총 17 사이 ~33) |
+| 126 | 산탄총 사거리 +20% | `fire()` weapon 1 — `SHOTGUN_RANGE = 204 → 245` |
+| 127 | 권총 데미지 -25% | `fire()` weapon 4 — 데미지 22→17 |
+| 128 | 저격총 데미지 +25% | `fire()` weapon 5 + `fireSniperAt()` — 데미지 150→188 |
+| 129 | HAWK 스킬 직선 발사 | `skillActive` 블록 — 7방향 산탄(±38°) → 단발 직선, 데미지 28→44, cooldown 0.055→0.081 |
+| 130 | 조준선 제거 | `drawAimLaser()` 호출 제거 (함수 정의는 유지) |
+| 131 | 플레이어 폭탄 사거리 | `throwBomb()` — range 140 → Math.min(190, d) (AI와 동일)
 
 ## 미구현 (요청됨)
 - 브롤스타즈식 사선 시야

@@ -9475,13 +9475,12 @@
           }
         }
 
-        // 적 플레이어 (점수: 거리 가중 + LOS 보너스 + 낮은HP 보너스)
+        // 적 플레이어 (점수: 거리 가중 + 낮은HP 보너스 — LOS는 점수에 미포함, 사격 시점에만 확인)
         if (!defenseMode && ai.team !== playerTeam && player.hp > 0) {
           const d = Math.hypot(player.x - ai.x, player.y - ai.y);
           const playerMaxHp = playerChar ? (playerChar.tbHp || 750) : 750;
-          const losBonus = hasLOS(ai.x, ai.y, player.x, player.y) ? 200 : 0;
           const hpBonus = (1 - player.hp / playerMaxHp) * 150;
-          const sc = -d * 0.6 + losBonus + hpBonus;
+          const sc = -d * 0.6 + hpBonus;
           if (sc > bestScore) { bestScore = sc; target = { x: player.x, y: player.y, isPlayer: true }; targetId = 'player'; }
         }
         // 적 AI (같은 점수 방식)
@@ -9490,9 +9489,8 @@
             const o = aiPlayers[oi];
             if (!o.alive || o.team === ai.team) continue;
             const d = Math.hypot(o.x - ai.x, o.y - ai.y);
-            const losBonus = hasLOS(ai.x, ai.y, o.x, o.y) ? 180 : 0;
             const hpBonus = o.maxHp > 0 ? (1 - o.hp / o.maxHp) * 130 : 0;
-            const sc = -d * 0.6 + losBonus + hpBonus;
+            const sc = -d * 0.6 + hpBonus;
             if (sc > bestScore) { bestScore = sc; target = o; targetId = 'ai' + oi; }
           }
         }
@@ -9508,10 +9506,10 @@
         }
         if (!target) continue;
 
-        // 타겟 바뀌면 반응시간 리셋 (인간처럼 잠깐 망설임)
+        // 타겟 바뀌면 반응시간 리셋 (인간처럼 잠깐 망설임 — 최대 0.22초로 단축)
         if (ai.aiLastTargetId !== targetId) {
           ai.aiLastTargetId = targetId;
-          ai.aiReactCd = 0.12 + Math.random() * 0.30;
+          ai.aiReactCd = 0.06 + Math.random() * 0.16;
         }
         if (ai.aiReactCd > 0) ai.aiReactCd -= dt;
 
@@ -9671,12 +9669,14 @@
           continue;
         }
 
+        // 쿨다운은 반응시간과 무관하게 항상 감소 (반응시간 중 얼어붙지 않도록)
+        ai.aiBurstPause = (ai.aiBurstPause || 0) - dt;
+        ai.shootCd = (ai.shootCd || 0) - dt;
+
         // 반응시간 중 사격 불가
         if (ai.aiReactCd > 0) continue;
 
         // ── 버스트 사격 ──
-        ai.aiBurstPause = (ai.aiBurstPause || 0) - dt;
-        ai.shootCd = (ai.shootCd || 0) - dt;
 
         // 무기별 파라미터
         let wRange, wDmg, wFireCd, wHitChance, wJitterHit, wJitterMiss;

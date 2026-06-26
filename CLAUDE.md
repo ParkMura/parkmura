@@ -172,6 +172,22 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 140 | 팀배틀 시야 HP 연동 해제 | healthEnergy = gameMode==="teambattle" ? 1.0 : hp/maxHp — AI 사격 데미지로 화면 어두워지는 문제 완전 해결 |
 | 141 | drawRaycastLight numRays 파라미터 | 6번째 인자 numRays(기본 240) 추가 — 아군 공유 시야는 80으로 성능 최적화 |
 | 142 | 팀 공유 시야 (darkness overlay) | drawOriginalFlashlightLayer() — teambattle 시 아군 AI 위치+시야각을 lightCtx destination-out 블록에 추가, 팀원 항상 밝게+시야 공유 |
+| 143 | 금고(Vault) 미션 시스템 | 팀배틀 목표를 금고 파괴+금괴 수송으로 전면 교체; facilities → Vault(HP 3000), 위치 맵 외각(x=55/3155, y=1100) |
+| 144 | 원형 리스폰 플랫폼 | spawnPlatforms[] — BLUE(300,1200), RED(3000,1200), r=140, 팀색 발광+맥동 링+착지 마커 |
+| 145 | AI 기관총 터렛 | turrets[] — 금고 양옆 4개(BLUE:160,1070/1330 RED:3140,1070/1330), HP 400, 사거리 520, 적 자동조준+0.6s 발사 |
+| 146 | 수송차(Convoy) AI | convoy 객체 — 금고파괴 후 생성, HP 3000, 웨이포인트 경로 따라 아군 스폰 이동, 총기만 데미지 |
+| 147 | 금고 파괴 시네마틱 | cinematicState 상태머신 — vault_explode→armor_equip→convoy_appear→convoy_load→done, 20초 자동 종료 |
+| 148 | 방호복(ArmorSuit) 시스템 | playerArmorSuit/ai.armorSuit — 금고 파괴 팀 플레이어에게 자동 장착, 리스폰 유지 |
+| 149 | 방호복 외골격 렌더 | drawMarineSoldier() armorSuit 파라미터 — 황금 어깨날개+V마크 오버레이 |
+| 150 | convoy 피격 처리 | applyTBHit convoy 케이스 + bullets 직접 피격 — 폭발무효, 총기만 데미지, convoy HP 0 시 즉시 승패 결정 |
+| 151 | AI convoy 우선순위 | updateAiPlayers() — convoy.team≠ai.team: convoy를 최우선 타겟(score 10000-dist)으로 설정 |
+| 152 | 터렛 레이캐스트 피격 | raycastShot() + applyTBHit isTurret — 플레이어 총격으로 적 터렛 파괴 가능 |
+| 153 | drawSpawnPlatforms | 원형 플랫폼 렌더 — 팀색 radial gradient+맥동 링+착지 마커+중앙 BLUE/RED 텍스트 |
+| 154 | drawVaultsWorld | 금고 렌더 — 황금 글로우+TARGET 텍스트+HP바, 파괴 시 DESTROYED 표시 |
+| 155 | drawTurretsWorld | 터렛 렌더 — 포신 각도 회전+팀색 링+HP바(피격 시 표시) |
+| 156 | drawConvoyWorld | 수송차 렌더 — 차체+바퀴+금괴+HP바+팀색 |
+| 157 | drawCinematic | 시네마틱 오버레이 — 반투명 배경+방호복 파편+자막+골드 로딩바+타이머 |
+| 158 | drawVaultMissionOverlay | MISSION CLEAR(폭죽)+MISSION FAILED 텍스트, 기존 VICTORY/DEFEAT 대체 |
 
 ## 미구현 (요청됨)
 - 주소창 숨기기

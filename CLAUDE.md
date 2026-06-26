@@ -196,6 +196,9 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 164 | 캐릭터별 방호복 색상 | drawMarineSoldier() armorSuit 블록 — HAWK=황금, BULL=오렌지, VIPER=에메랄드, MEDIC=로즈골드 |
 | 165 | convoy 회전 렌더 | drawConvoyWorld() — ctx.rotate(convoy.angle) 적용, 진행 방향으로 차체 회전, 앞부분 액센트 |
 | 166 | convoy 진행도 HUD | drawTeamBattleHud() — ROUTE XX% 텍스트, convoy HP바 위에 표시 |
+| 167 | 시네마틱 충격파 링 | drawCinematic() vault_explode — 이중 충격파 + convoy_appear 목적지 화살표 + 배경 불투명도 증가 |
+| 168 | 승패 화면 킬 스코어 | drawVaultMissionOverlay() — KILLS X—X 표시 |
+| 169 | convoy 각도 부드러운 lerp | updateConvoy() — angleDiff 최단경로 회전, dt*4 속도 |
 
 ## 미구현 (요청됨)
 - 주소창 숨기기

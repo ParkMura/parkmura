@@ -9457,7 +9457,12 @@
           convoy.waypointIdx++;
         } else {
           const spd = 90 * dt;
-          convoy.angle = Math.atan2(dy, dx);
+          const targetAngle = Math.atan2(dy, dx);
+          // 각도 lerp (최단 경로 회전)
+          let angleDiff = targetAngle - convoy.angle;
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+          convoy.angle += angleDiff * Math.min(1, dt * 4);
           convoy.x += (dx / dist) * spd;
           convoy.y += (dy / dist) * spd;
         }
@@ -9520,7 +9525,8 @@
         armorEquipped: false,
         convoySpawned: false,
         goldLoadProgress: 0,
-        waypoints, vX, vY
+        waypoints, vX, vY,
+        explodeRing: 0
       };
 
       // 폭발 이펙트
@@ -9544,6 +9550,9 @@
         p.life += dt;
       }
 
+      if (c.phase === "vault_explode") {
+        c.explodeRing = Math.min(1, c.explodeRing + dt / 1.5); // 1.5초에 0→1
+      }
       if (c.phase === "vault_explode" && c.timer >= 1.5) {
         c.phase = "armor_equip"; c.timer = 0;
       } else if (c.phase === "armor_equip" && c.timer >= 2.0) {
@@ -10637,7 +10646,7 @@
       ctx.save();
       ctx.setTransform(scale, 0, 0, scale, splitPanelOffsetX * scale, 0);
       // 반투명 오버레이
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillStyle = "rgba(0,0,0,0.62)";
       ctx.fillRect(0, 0, width, height);
       // 방호복 파편 렌더 (screenX/Y 변환으로 올바르게 표시)
       ctx.save();
@@ -10656,6 +10665,25 @@
         ctx.restore();
       }
       ctx.restore();
+      // vault_explode 충격파 링
+      if (c.phase === "vault_explode" || (c.phase === "armor_equip" && c.timer < 0.5)) {
+        const ringT = c.explodeRing || 0;
+        const ringR = ringT * Math.min(width, height) * 0.45;
+        const ringAlpha = Math.max(0, 1 - ringT * 1.2);
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 200, 0, ${ringAlpha})`;
+        ctx.lineWidth = (1 - ringT) * 12 + 1;
+        ctx.shadowColor = "#FFD700"; ctx.shadowBlur = 20;
+        ctx.beginPath(); ctx.arc(cx, cy, Math.max(1, ringR), 0, Math.PI * 2); ctx.stroke();
+        // 두 번째 작은 링 (50ms 지연)
+        const ringR2 = Math.max(0, ringT - 0.15) * Math.min(width, height) * 0.38;
+        const ringAlpha2 = Math.max(0, 1 - Math.max(0, ringT - 0.15) * 1.4);
+        ctx.strokeStyle = `rgba(255, 140, 0, ${ringAlpha2})`;
+        ctx.lineWidth = (1 - Math.max(0, ringT - 0.15)) * 8 + 1;
+        ctx.beginPath(); ctx.arc(cx, cy, Math.max(1, ringR2), 0, Math.PI * 2); ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
       // 자막
       let msg = "";
       if (c.phase === "vault_explode") msg = "VAULT BREACHED!";
@@ -10677,6 +10705,39 @@
         ctx.fillStyle = "#fff"; ctx.font = "12px monospace";
         ctx.textBaseline = "top";
         ctx.fillText("LOADING GOLD " + Math.round(c.goldLoadProgress * 100) + "%", cx, by + bh + 8);
+      }
+      // convoy_appear/convoy_load 페이즈: 목적지 방향 화살표 + 미션 브리핑
+      if (c.phase === "convoy_appear" || c.phase === "convoy_load") {
+        if (c.waypoints && c.waypoints.length > 0) {
+          const dest = c.waypoints[c.waypoints.length - 1];
+          const dsx = screenX(dest.x), dsy = screenY(dest.y);
+          const destAngle = Math.atan2(dsy - cy, dsx - cx);
+
+          ctx.save();
+          // 목적지 레이블 (화면 중앙 아래)
+          ctx.fillStyle = "rgba(255,255,255,0.85)";
+          ctx.font = "bold 14px monospace";
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.shadowColor = "#00aaff"; ctx.shadowBlur = 10;
+          ctx.fillText("► ESCORT THE CONVOY TO BASE ◄", cx, cy + 60);
+          ctx.shadowBlur = 0;
+
+          // 목적지 방향 화살표 (화면 엣지)
+          const margin = 55;
+          const hw = width / 2 - margin, hh = height / 2 - margin;
+          const ax = cx + Math.cos(destAngle) * hw;
+          const ay = cy + Math.sin(destAngle) * hh;
+          ctx.translate(ax, ay); ctx.rotate(destAngle);
+          ctx.fillStyle = c.destroyerTeam === 0 ? "#4488ff" : "#ff4444";
+          ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.moveTo(16, 0); ctx.lineTo(-10, -9); ctx.lineTo(-10, 9);
+          ctx.closePath(); ctx.fill();
+          ctx.fillStyle = "#fff"; ctx.font = "bold 9px monospace";
+          ctx.rotate(-destAngle);
+          ctx.fillText("BASE", 0, 20);
+          ctx.restore();
+        }
       }
       // 타이머
       const remaining = Math.ceil(c.maxDuration - c.totalTimer);
@@ -10733,6 +10794,15 @@
       ctx.font = `${Math.round(height * 0.025)}px monospace`;
       ctx.fillStyle = "rgba(255,255,255,0.8)";
       ctx.fillText(subText, cx, cy + cy * 0.15);
+      // 킬 스코어 표시
+      if (typeof tbKills !== "undefined" && tbKills) {
+        const myKills = tbKills[playerTeam] || 0;
+        const enemyKills = tbKills[1 - playerTeam] || 0;
+        ctx.font = `${Math.round(height * 0.022)}px monospace`;
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(`KILLS  ${myKills} — ${enemyKills}`, cx, cy + cy * 0.22);
+      }
       // 재시작 안내
       ctx.font = `${Math.round(height * 0.018)}px monospace`;
       ctx.fillStyle = "rgba(255,255,255,0.5)";

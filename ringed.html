@@ -9432,6 +9432,10 @@
             if (d2 < 260) {
               healTarget.hp = Math.min(healTarget.maxHp, healTarget.hp + healTarget.maxHp * 0.07 * dt);
               ai.hp = Math.min(ai.maxHp, ai.hp + ai.maxHp * 0.03 * dt);
+            } else {
+              // 힐 범위 밖 → 아군 쪽으로 이동 목표 설정
+              target = { x: healTarget.x, y: healTarget.y, isHealTarget: true };
+              targetId = 'heal_' + aiPlayers.indexOf(healTarget);
             }
           }
         }
@@ -9446,6 +9450,28 @@
               .filter(a => a.alive && a.team === ai.team)
               .sort((a,b) => Math.hypot(a.x-(myFac.x+myFac.w/2),a.y-(myFac.y+myFac.h/2)) - Math.hypot(b.x-(myFac.x+myFac.w/2),b.y-(myFac.y+myFac.h/2)))[0];
             if (nearestDefender === ai) defenseMode = true;
+          }
+        }
+
+        // 방어 모드: 550px 내 적 우선 공격, 없으면 가드 포지션
+        if (defenseMode) {
+          if (ai.team !== playerTeam && player.hp > 0) {
+            const d = Math.hypot(player.x - ai.x, player.y - ai.y);
+            if (d < 550) { bestScore = -d; target = { x: player.x, y: player.y, isPlayer: true }; targetId = 'player'; }
+          }
+          for (let oi = 0; oi < aiPlayers.length; oi++) {
+            const o = aiPlayers[oi];
+            if (!o.alive || o.team === ai.team) continue;
+            const d = Math.hypot(o.x - ai.x, o.y - ai.y);
+            if (d < 550 && -d > bestScore) { bestScore = -d; target = o; targetId = 'ai' + oi; }
+          }
+          if (!target) {
+            const myFac = facilities.find(f => f.team === ai.team);
+            if (myFac) {
+              const guardX = myFac.x + myFac.w/2 + (ai.team === 0 ? 180 : -180);
+              target = { x: guardX, y: myFac.y + myFac.h/2, isGuard: true };
+              targetId = 'guard';
+            }
           }
         }
 
@@ -9478,16 +9504,6 @@
             const d = Math.hypot(fac.x+fac.w/2-ai.x, fac.y+fac.h/2-ai.y);
             const sc = -d * 0.4;
             if (sc > bestScore) { bestScore = sc; target = { x:fac.x+fac.w/2, y:fac.y+fac.h/2, isFacility:true, fac }; targetId = 'fac' + fi; }
-          }
-        }
-        // 방어 모드: 아군 기지 앞 대기 포지션을 임시 목표로 (적 없을 때만)
-        if (!target && defenseMode) {
-          const myFac = facilities.find(f => f.team === ai.team);
-          if (myFac) {
-            const guardX = myFac.x + myFac.w/2 + (ai.team === 0 ? 180 : -180);
-            const guardY = myFac.y + myFac.h/2;
-            target = { x: guardX, y: guardY, isGuard: true };
-            targetId = 'guard';
           }
         }
         if (!target) continue;
@@ -9675,7 +9691,7 @@
           wHitChance = hitChance; wJitterHit = 14; wJitterMiss = 130;
         }
 
-        if (!target.isGuard && ai.shootCd <= 0 && ai.aiBurstPause <= 0 && td < wRange && losToTarget) {
+        if (!target.isGuard && !target.isHealTarget && ai.shootCd <= 0 && ai.aiBurstPause <= 0 && td < wRange && losToTarget) {
           // 버스트 카운터 초기화
           if (!ai.aiBurstLeft || ai.aiBurstLeft <= 0) {
             ai.aiBurstLeft = (ai.charIdx === 2) ? 1 : (3 + Math.floor(Math.random() * 2)); // VIPER 단발, 나머지 3~4발

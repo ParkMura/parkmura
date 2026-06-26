@@ -209,6 +209,9 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 177 | drawCinematic 재작성 | 금괴비산, 방호복피스이징, 대형자막, 화물로딩바, 카운트다운3-2-1-GO!, 레터박스 |
 | 178 | screenWhiteFlash 이펙트 | 전체화면 흰색 플래시 — 금고 폭발(0.7), 방호복장착(0.85) 시 발동 |
 | 179 | 터렛 발사 이펙트 | turret.fireFlash=0.12 — 더블배럴 황금 불꽃 이펙트 |
+| 180 | 금고/플랫폼/터렛/수송차 이중변환 버그 수정 | drawVaultsWorld/drawSpawnPlatforms/drawTurretsWorld/drawConvoyWorld — drawGame() 월드 트랜스폼 내에서 screenX/screenY 사용 시 이중 변환 발생, ctx.save/setTransform(scale)/restore로 CSS 픽셀 공간으로 리셋 후 렌더링 |
+| 181 | screenWhiteFlash 화면 하얗게 멈추는 버그 수정 | drawGame()에서 dt 미정의(NaN)로 감쇠 실패 → update(dt)에서 dt*3 감쇠 처리, screenWhiteFlash 강도 0.7→0.4 |
+| 182 | 금고 라이트 추가 | drawOriginalFlashlightLayer() — 금고 위치에 radial light(반경 260px) 추가, 어둠 속에서도 금고 가시성 보장 |
 
 ## 미구현 (요청됨)
 - 주소창 숨기기

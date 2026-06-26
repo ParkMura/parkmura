@@ -2946,6 +2946,7 @@
       // 화면 이펙트 감쇠
       if (screenDmgFlash > 0) screenDmgFlash = Math.max(0, screenDmgFlash - dt * 2.5);
       if (screenKillFlash > 0) screenKillFlash = Math.max(0, screenKillFlash - dt * 3);
+      if (screenWhiteFlash > 0) screenWhiteFlash = Math.max(0, screenWhiteFlash - dt * 3);
       updatePickups(dt);
       updateSpeechBubbles(dt);
       for (let i = flashes.length - 1; i >= 0; i--) {
@@ -5080,7 +5081,6 @@
         ctx.fillStyle = `rgba(255,255,255,${Math.min(1, screenWhiteFlash)})`;
         ctx.fillRect(0, 0, width, height);
         ctx.restore();
-        screenWhiteFlash = Math.max(0, screenWhiteFlash - dt * 4);
       }
       drawRaidWarningOverlay();
       if (splitPanelOffsetX > 0) {
@@ -7229,6 +7229,16 @@
           drawRadialLight(lightCtx, ax, ay, 15 * z, 60 * z, 0.90);
           // 팀원의 시야각 공유 (80 ray, 성능 최적화)
           drawRaycastLight(lightCtx, ally.x, ally.y, 380, mainEnergy * 0.80, 80);
+        }
+      }
+      // 금고/터렛 항상 밝게 — 중요 오브젝트는 어둠 속에서도 보이게
+      if (gameMode === "teambattle") {
+        for (const fac of facilities) {
+          if (!fac.isVault || fac.destroyed) continue;
+          const vx = screenX(fac.x + fac.w / 2);
+          const vy = screenY(fac.y + fac.h / 2);
+          if (vx < -400 || vy < -400 || vx > width + 400 || vy > height + 400) continue;
+          drawRadialLight(lightCtx, vx, vy, 8 * z, 260 * z, 0.95);
         }
       }
       drawLightTexture(lightCtx, assets.flashlight, beamCenter.x, beamCenter.y, lp.angle + Math.PI / 2, 1024 * 0.2 * originalScalePulse * z, 1024 * 0.2 * originalScalePulse * z, mainEnergy * 0.07);
@@ -9691,7 +9701,7 @@
           addShockRing(c.vX, c.vY, "#FFD700", 300, 0.7, 4);
           addShockRing(c.vX, c.vY, "#FF4400", 200, 0.8, 3);
           shake = 10;
-          screenWhiteFlash = 0.7;
+          screenWhiteFlash = 0.4;
           screenDmgFlash = 0.4;
         }
         if (c.timer >= 5.5) { c.phase = "armor_equip"; c.timer = 0; }
@@ -10605,6 +10615,8 @@
 
     function drawSpawnPlatforms() {
       if (gameMode !== "teambattle") return;
+      ctx.save();
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
       const z = camera.zoom;
       const t = Date.now() * 0.001;
       for (const plat of spawnPlatforms) {
@@ -10735,10 +10747,13 @@
 
         ctx.restore();
       }
+      ctx.restore();
     }
 
     function drawVaultsWorld() {
       if (gameMode !== "teambattle") return;
+      ctx.save();
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
       const t = Date.now() * 0.001;
       const z = camera.zoom;
 
@@ -10982,10 +10997,13 @@
       }
       ctx.globalAlpha = 1; ctx.shadowBlur = 0;
       ctx.restore();
+      ctx.restore();
     }
 
     function drawTurretsWorld() {
       if (gameMode !== "teambattle") return;
+      ctx.save();
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
       const z = camera.zoom;
       const t = Date.now() * 0.001;
 
@@ -11159,14 +11177,17 @@
         ctx.beginPath(); ctx.arc(spx, spy, sp.size * z, 0, Math.PI*2); ctx.fill();
       }
       ctx.globalAlpha = 1; ctx.restore();
+      ctx.restore();
     }
 
     function drawConvoyWorld() {
       if (!convoy || !convoy.alive) return;
+      ctx.save();
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
       const z = camera.zoom;
       const t = Date.now() * 0.001;
       const sx = screenX(convoy.x), sy = screenY(convoy.y);
-      if (sx < -300 || sx > width + 300 || sy < -300 || sy > height + 300) return;
+      if (sx < -300 || sx > width + 300 || sy < -300 || sy > height + 300) { ctx.restore(); return; }
 
       const isBlue = convoy.team === 0;
       const teamColor  = isBlue ? "#2255cc" : "#cc2222";
@@ -11266,6 +11287,7 @@
         ctx.fillText(`ROUTE ${Math.round(prog * 100)}%`, sx, by - 18 * z);
       }
 
+      ctx.restore();
       ctx.restore();
     }
 

@@ -10239,7 +10239,9 @@
         }
       } else if (hit.isConvoy) {
         if (!convoy || !convoy.alive || convoy.invuln > 0) return;
-        // 폭발물/미사일은 convoy에 데미지 없음
+        // 아군 convoy는 데미지 없음
+        if (convoy.team === playerTeam) return;
+        // 폭발물/미사일은 convoy에 데미지 없음 (raycast 총알만 적용)
         if (hit.fromExplosion || hit.fromMissile || hit.fromBomb) return;
         convoy.hp = Math.max(0, convoy.hp - dmg);
         convoy.hitFlash = 0.18;
@@ -10508,7 +10510,7 @@
       ctx.fillStyle = convoy.hitFlash > 0 ? "#fff" : col;
       ctx.strokeStyle = colBright; ctx.lineWidth = 2 * z;
       ctx.beginPath();
-      ctx.roundRect(sx - sw/2, sy - sh/2, sw, sh, 6 * z);
+      roundRect(sx - sw/2, sy - sh/2, sw, sh, 6 * z);
       ctx.fill(); ctx.stroke();
       // 바퀴 4개
       ctx.fillStyle = "#222";
@@ -11217,7 +11219,7 @@
       g.addColorStop(0, isAlly?"rgba(60,140,255,0.2)":"rgba(255,60,60,0.2)");
       g.addColorStop(1,"rgba(0,0,0,0)");
       ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,30,0,Math.PI*2); ctx.fill();
-      drawMarineSoldier(24, rp.walkTime||0, rp.isMoving||false, { dark:pc.body, mid:pc.light, light:pc.light, red:pc.visor }, false, false, 0);
+      drawMarineSoldier(24, rp.walkTime||0, rp.isMoving||false, { dark:pc.body, mid:pc.light, light:pc.light, red:pc.visor }, false, false, 0, rp.armorSuit||false);
       // 팀 링 + 인간 플레이어 표시 (별표)
       ctx.strokeStyle = isAlly?"rgba(80,200,255,0.85)":"rgba(255,80,80,0.85)";
       ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(0,0,27,0,Math.PI*2); ctx.stroke();

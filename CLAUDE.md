@@ -212,6 +212,9 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 180 | 금고/플랫폼/터렛/수송차 이중변환 버그 수정 | drawVaultsWorld/drawSpawnPlatforms/drawTurretsWorld/drawConvoyWorld — drawGame() 월드 트랜스폼 내에서 screenX/screenY 사용 시 이중 변환 발생, ctx.save/setTransform(scale)/restore로 CSS 픽셀 공간으로 리셋 후 렌더링 |
 | 181 | screenWhiteFlash 화면 하얗게 멈추는 버그 수정 | drawGame()에서 dt 미정의(NaN)로 감쇠 실패 → update(dt)에서 dt*3 감쇠 처리, screenWhiteFlash 강도 0.7→0.4 |
 | 182 | 금고 라이트 추가 | drawOriginalFlashlightLayer() — 금고 위치에 radial light(반경 260px) 추가, 어둠 속에서도 금고 가시성 보장 |
+| 183 | convoy A* 길찾기 | buildConvoyGrid()+findConvoyPath() — 64px 그리드, 28px 마진, 8방향 A*, max 3000iter; stuckTimer>0.6s 재경로 탐색 |
+| 184 | convoy MRAP 군용 장갑차 재설계 | drawConvoyWorld() — 사다리꼴 차체(앞좁고 뒤넓음), 4바퀴 회전, 헤드라이트/테일라이트, 루프해치, 안테나LED, 통기구, 금장트림, 팀색 줄무늬, HP바 |
+| 185 | convoy 연기 파티클 update 이동 | updateConvoy(dt) — 연기 생성+물리를 draw에서 update로 이동, convoyWheelAngle+=dt*5.5 |
 
 ## 미구현 (요청됨)
 - 주소창 숨기기

@@ -188,6 +188,14 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 156 | drawConvoyWorld | 수송차 렌더 — 차체+바퀴+금괴+HP바+팀색 |
 | 157 | drawCinematic | 시네마틱 오버레이 — 반투명 배경+방호복 파편+자막+골드 로딩바+타이머 |
 | 158 | drawVaultMissionOverlay | MISSION CLEAR(폭죽)+MISSION FAILED 텍스트, 기존 VICTORY/DEFEAT 대체 |
+| 159 | 방호복 파편 렌더 버그 수정 | drawCinematic() — screenX/Y 변환으로 올바른 월드→화면 변환, life>=maxLife 조건으로 페이드 아웃 |
+| 160 | 방호복 방어 50%·공격 10% 적용 | applyTBHit()/updateAiPlayers()/bullets — playerArmorSuit/ai.armorSuit 기반 데미지 배율 실제 적용 |
+| 161 | convoy 에스코트 AI 이동 | updateAiPlayers() isConvoyEscort 블록 — convoy 주변 80px 반경 포지션 배정, 적 없을 때 에스코트 위치로 이동 |
+| 162 | convoy 화면 밖 화살표 | drawConvoyArrow() — convoy가 화면 밖이면 방향 화살표+CONVOY 레이블 표시 |
+| 163 | 미니맵 convoy/vault/AI 표시 | drawMinimap() — teambattle 시 vault(팀색 □), convoy(황금 △), AI(팀색 점) 미니맵에 추가 |
+| 164 | 캐릭터별 방호복 색상 | drawMarineSoldier() armorSuit 블록 — HAWK=황금, BULL=오렌지, VIPER=에메랄드, MEDIC=로즈골드 |
+| 165 | convoy 회전 렌더 | drawConvoyWorld() — ctx.rotate(convoy.angle) 적용, 진행 방향으로 차체 회전, 앞부분 액센트 |
+| 166 | convoy 진행도 HUD | drawTeamBattleHud() — ROUTE XX% 텍스트, convoy HP바 위에 표시 |
 
 ## 미구현 (요청됨)
 - 주소창 숨기기

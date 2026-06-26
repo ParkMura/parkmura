@@ -2534,7 +2534,8 @@
             // 플레이어가 적팀인 경우
             if (player.hp > 0 && playerTeam !== b.team && player.invuln <= 0) {
               if (Math.hypot(b.x - player.x, b.y - player.y) < player.r + 6) {
-                player.hp = Math.max(0, player.hp - (b.dmg || 28));
+                const _turretArmorMult = playerArmorSuit ? 0.5 : 1.0;
+                player.hp = Math.max(0, player.hp - (b.dmg || 28) * _turretArmorMult);
                 player.invuln = 0.08;
                 shake = Math.max(shake, 4);
                 screenDmgFlash = Math.min(1, screenDmgFlash + (b.dmg || 28) / 400);
@@ -2550,7 +2551,8 @@
               for (const ai of aiPlayers) {
                 if (!ai.alive || ai.team === b.team) continue;
                 if (Math.hypot(b.x - ai.x, b.y - ai.y) < ai.r + 6) {
-                  ai.hp = Math.max(0, ai.hp - (b.dmg || 28));
+                  const _aiArmorMult = ai.armorSuit ? 0.5 : 1.0;
+                  ai.hp = Math.max(0, ai.hp - (b.dmg || 28) * _aiArmorMult);
                   ai.hitFlash = 0.14;
                   burst(b.x, b.y, "#ff8844", 4);
                   if (ai.hp <= 0) { ai.hp = 0; ai.alive = false; ai.respawnTimer = 10; }
@@ -5049,6 +5051,7 @@
       } else {
         drawHud();
         if (gameMode === "teambattle") drawTeamBattleHud();
+        if (gameMode === "teambattle") drawConvoyArrow();
         if (isMobile) drawMobileControls();
       }
       if (gameMode === "teambattle") drawCinematic();
@@ -6489,16 +6492,22 @@
       // 방호복(ArmorSuit) 오버레이
       if (armorSuit) {
         const s = r;
+        // 캐릭터 body 색상에 따라 방호복 색 분기
+        let armorCol = "#FFD700"; // 기본 황금 (HAWK - 청색 body)
+        const bodyCol = colors && colors.dark ? colors.dark : "";
+        if (bodyCol === "#281808" || bodyCol === "#4a2a10") armorCol = "#FF8C00"; // BULL 오렌지
+        else if (bodyCol === "#102818" || bodyCol === "#1e4020") armorCol = "#00DD44"; // VIPER 에메랄드
+        else if (bodyCol === "#3a0a2a" || bodyCol === "#600a40") armorCol = "#FF69B4"; // MEDIC 로즈골드
         ctx.save();
-        ctx.strokeStyle = "#FFD700";
-        ctx.shadowColor = "#FFD700"; ctx.shadowBlur = 8;
+        ctx.strokeStyle = armorCol;
+        ctx.shadowColor = armorCol; ctx.shadowBlur = 8;
         ctx.lineWidth = 2.5;
-        // 어깨 황금 날개
+        // 어깨 날개
         ctx.beginPath();
         ctx.moveTo(-s*0.35, -s*0.15);
         ctx.lineTo(-s*0.55, -s*0.35);
         ctx.lineTo(-s*0.45, -s*0.45);
-        ctx.strokeStyle = "#FFD700"; ctx.stroke();
+        ctx.strokeStyle = armorCol; ctx.stroke();
         ctx.beginPath();
         ctx.moveTo(s*0.35, -s*0.15);
         ctx.lineTo(s*0.55, -s*0.35);
@@ -6509,7 +6518,7 @@
         ctx.moveTo(-s*0.15, -s*0.2);
         ctx.lineTo(0, s*0.0);
         ctx.lineTo(s*0.15, -s*0.2);
-        ctx.shadowBlur = 12; ctx.strokeStyle = "#FFD700";
+        ctx.shadowBlur = 12; ctx.strokeStyle = armorCol;
         ctx.lineWidth = 2; ctx.stroke();
         ctx.shadowBlur = 0;
         ctx.restore();
@@ -7696,6 +7705,34 @@
       drawComebackBuff();
     }
 
+    function drawConvoyArrow() {
+      if (!convoy || !convoy.alive || !convoy.goldLoaded) return;
+      const sx = screenX(convoy.x), sy = screenY(convoy.y);
+      if (sx >= -20 && sx <= width + 20 && sy >= -20 && sy <= height + 20) return; // 화면 안이면 표시 안함
+      const cx = width / 2, cy = height / 2;
+      const angle = Math.atan2(sy - cy, sx - cx);
+      const margin = 44;
+      const halfW = Math.min(cx, cy) - margin;
+      const arrowX = cx + Math.cos(angle) * halfW;
+      const arrowY = cy + Math.sin(angle) * halfW;
+      const arrowCol = convoy.team === playerTeam ? "#44ff88" : "#ff4444";
+      ctx.save();
+      ctx.translate(arrowX, arrowY);
+      ctx.rotate(angle);
+      ctx.fillStyle = arrowCol;
+      ctx.shadowColor = arrowCol; ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(14, 0); ctx.lineTo(-9, -8); ctx.lineTo(-9, 8);
+      ctx.closePath(); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.rotate(-angle);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 9px monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("CONVOY", 0, 18);
+      ctx.restore();
+    }
+
     function drawMinimap() {
       const mw = 110, mh = 80;
       const mx = width - mw - 12, my = 12;
@@ -7714,6 +7751,32 @@
       for (const e of enemies) {
         const ex = mx + e.x * scaleX, ey = my + e.y * scaleY;
         ctx.fillRect(ex - 1.5, ey - 1.5, 3, 3);
+      }
+      // 팀배틀: vault/convoy/turret 표시
+      if (gameMode === "teambattle") {
+        // vault 표시 (팀 색 사각형)
+        for (const v of facilities) {
+          const vx = mx + v.x * scaleX, vy = my + v.y * scaleY;
+          ctx.fillStyle = v.destroyed ? "#444" : (v.team === 0 ? "#4488ff" : "#ff4444");
+          ctx.fillRect(vx - 3, vy - 3, 6, 6);
+        }
+        // convoy 표시 (황금 삼각형)
+        if (convoy && convoy.alive && convoy.goldLoaded) {
+          const cvx = mx + convoy.x * scaleX, cvy = my + convoy.y * scaleY;
+          ctx.fillStyle = "#FFD700";
+          ctx.shadowColor = "#FFD700"; ctx.shadowBlur = 4;
+          ctx.beginPath();
+          ctx.moveTo(cvx, cvy - 5); ctx.lineTo(cvx + 4, cvy + 3); ctx.lineTo(cvx - 4, cvy + 3);
+          ctx.closePath(); ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+        // 아군 AI 표시
+        for (const ai of aiPlayers) {
+          if (!ai.alive) continue;
+          const ax = mx + ai.x * scaleX, ay = my + ai.y * scaleY;
+          ctx.fillStyle = ai.team === playerTeam ? "#88aaff" : "#ff6644";
+          ctx.fillRect(ax - 1.5, ay - 1.5, 3, 3);
+        }
       }
       ctx.fillStyle = "#f1d477";
       const px2 = mx + player.x * scaleX, py2 = my + player.y * scaleY;
@@ -9794,8 +9857,13 @@
               bestScore = 10000 - d; // 다른 타겟보다 압도적으로 높은 점수
             }
           } else if (ai.isConvoyEscort) {
-            // 아군 convoy 에스코트: convoy 주변 적 우선 공격 (타겟 선정은 아래 일반 로직이 담당)
-            // convoy 가까이 이동하도록 guard 위치 조정 (convoy 없을 때만 기본 타겟으로)
+            // 아군 convoy 에스코트: convoy 주변에 포진하면서 적 공격
+            const escortAIs = aiPlayers.filter(a => a.isConvoyEscort && a.team === ai.team);
+            const escortIdx = escortAIs.indexOf(ai);
+            const escortCount = Math.max(1, escortAIs.length);
+            const offsetAngle = (escortIdx / escortCount) * Math.PI * 2;
+            ai._escortX = convoy.x + Math.cos(offsetAngle) * 80;
+            ai._escortY = convoy.y + Math.sin(offsetAngle) * 80;
           }
         }
 
@@ -9885,6 +9953,14 @@
             const d = Math.hypot(fac.x+fac.w/2-ai.x, fac.y+fac.h/2-ai.y);
             const sc = -d * 0.4;
             if (sc > bestScore) { bestScore = sc; target = { x:fac.x+fac.w/2, y:fac.y+fac.h/2, isFacility:true, fac }; targetId = 'fac' + fi; }
+          }
+        }
+        // convoy 에스코트: 적이 없으면 convoy 옆 포지션으로 이동
+        if (!target && ai.isConvoyEscort && ai._escortX !== undefined) {
+          const ed = Math.hypot(ai._escortX - ai.x, ai._escortY - ai.y);
+          if (ed > 30) {
+            target = { x: ai._escortX, y: ai._escortY, isGuard: true };
+            targetId = 'escort';
           }
         }
         if (!target) continue;
@@ -10128,7 +10204,8 @@
 
           // 벽에 막히지 않았을 때만 데미지
           if (!wallBlocked && hits) {
-            const finalDmg = wDmg * (hpFrac < 0.5 ? 0.85 : 1.0);
+            const _aiFireArmorMult = (ai.team !== playerTeam && playerArmorSuit) ? 0.5 : 1.0;
+            const finalDmg = wDmg * (hpFrac < 0.5 ? 0.85 : 1.0) * _aiFireArmorMult;
             if (target.isPlayer && player.invuln <= 0) {
               player.hp = Math.max(0, player.hp - finalDmg);
               player.invuln = 0.08;
@@ -10147,7 +10224,8 @@
                 }
               }
             } else if (target.alive !== undefined) {
-              target.hp = Math.max(0, target.hp - wDmg);
+              const _targetArmorMult = target.armorSuit ? 0.5 : 1.0;
+              target.hp = Math.max(0, target.hp - wDmg * _targetArmorMult);
               if (target.hp <= 0) {
                 target.hp=0; target.alive=false; target.respawnTimer = 10;
                 tbKills[ai.team]++;
@@ -10198,11 +10276,14 @@
       if (hit.aiPlayer) {
         if (hit.aiPlayer.team === playerTeam) return;
         const isCrit = dmg >= 80;
-        hit.aiPlayer.hp -= dmg;
+        const _applyArmorBonus = playerArmorSuit ? 1.1 : 1.0;
+        const _applyAiArmorMult = hit.aiPlayer.armorSuit ? 0.5 : 1.0;
+        const dmg_final = Math.round(dmg * _applyArmorBonus * _applyAiArmorMult);
+        hit.aiPlayer.hp -= dmg_final;
         hit.aiPlayer.hitFlash = isCrit ? 0.22 : 0.14;  // 피격 플래시
         burst(hit.x, hit.y, isCrit ? "#FFD700" : "#ffaa44", isCrit ? 14 : 7);
-        skillEnergy = Math.min(1, skillEnergy + dmg / 1000);
-        addFloatText(dmg, hit.x, hit.y, isCrit ? "#FFD700" : "#ff8844", isCrit ? 22 : 14);
+        skillEnergy = Math.min(1, skillEnergy + dmg_final / 1000);
+        addFloatText(dmg_final, hit.x, hit.y, isCrit ? "#FFD700" : "#ff8844", isCrit ? 22 : 14);
         if (hit.aiPlayer.hp <= 0) {
           hit.aiPlayer.hp = 0; hit.aiPlayer.alive = false;
           hit.aiPlayer.respawnTimer = 10;
@@ -10503,31 +10584,41 @@
       const sx = screenX(convoy.x), sy = screenY(convoy.y);
       const sw = convoy.w * z, sh = convoy.h * z;
       if (sx + sw < -100 || sx - sw > width + 100) return;
-      ctx.save();
       const col = convoy.team === 0 ? "#1a3a8a" : "#8a1a1a";
       const colBright = convoy.team === 0 ? "#4466cc" : "#cc4444";
-      // 차체
+      ctx.save();
+      // convoy 이동 방향으로 회전
+      ctx.translate(sx, sy);
+      ctx.rotate(convoy.angle || 0);
+      // 차체 (중심 기준)
       ctx.fillStyle = convoy.hitFlash > 0 ? "#fff" : col;
       ctx.strokeStyle = colBright; ctx.lineWidth = 2 * z;
       ctx.beginPath();
-      roundRect(sx - sw/2, sy - sh/2, sw, sh, 6 * z);
+      roundRect(-sw/2, -sh/2, sw, sh, 6 * z);
       ctx.fill(); ctx.stroke();
-      // 바퀴 4개
+      // 방향 표시 앞부분 액센트
+      ctx.fillStyle = colBright;
+      ctx.globalAlpha = 0.5;
+      ctx.fillRect(-sw/2, -sh/2, sw, sh * 0.22);
+      ctx.globalAlpha = 1;
+      // 바퀴 4개 (중심 기준)
       ctx.fillStyle = "#222";
       [[-0.35,-0.55],[0.35,-0.55],[-0.35,0.55],[0.35,0.55]].forEach(([rx2,ry2]) => {
-        ctx.beginPath(); ctx.arc(sx + rx2*sw, sy + ry2*sh, 7*z, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(rx2*sw, ry2*sh, 7*z, 0, Math.PI*2); ctx.fill();
       });
-      // 금괴
+      // 금괴 (중심)
       ctx.fillStyle = "#FFD700";
       ctx.shadowColor = "#FFD700"; ctx.shadowBlur = 8 * z;
-      ctx.fillRect(sx - 10*z, sy - 6*z, 20*z, 12*z);
+      ctx.fillRect(-10*z, -6*z, 20*z, 12*z);
       ctx.shadowBlur = 0;
-      // CONVOY 텍스트
+      ctx.restore();
+      // CONVOY 텍스트 (회전 없이 위에 표시)
+      ctx.save();
       ctx.fillStyle = colBright;
       ctx.font = `bold ${Math.round(9 * z)}px monospace`;
       ctx.textAlign = "center"; ctx.textBaseline = "bottom";
       ctx.fillText("CONVOY", sx, sy - sh/2 - 2*z);
-      // HP 바
+      // HP 바 (회전 없이 위에 표시)
       const bw2 = sw, bh2 = 6*z;
       const bx2 = sx - bw2/2, by2 = sy - sh/2 - 14*z;
       ctx.fillStyle = "#222"; ctx.fillRect(bx2, by2, bw2, bh2);
@@ -10548,17 +10639,19 @@
       // 반투명 오버레이
       ctx.fillStyle = "rgba(0,0,0,0.45)";
       ctx.fillRect(0, 0, width, height);
-      // 방호복 파편 렌더 (월드 좌표계로)
+      // 방호복 파편 렌더 (screenX/Y 변환으로 올바르게 표시)
       ctx.save();
-      ctx.scale(camera.zoom, camera.zoom);
-      ctx.translate(-camera.x, -camera.y);
+      ctx.setTransform(scale, 0, 0, scale, splitPanelOffsetX * scale, 0);
       for (const p of c.armorPieces) {
-        if (p.life > p.maxLife) continue;
+        if (p.life >= p.maxLife) continue; // life가 maxLife에 도달하면 사라짐
+        const alpha = Math.max(0, 1 - p.life / p.maxLife);
+        const px = screenX(p.x), py = screenY(p.y);
         ctx.save();
-        ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.globalAlpha = alpha;
+        ctx.translate(px, py); ctx.rotate(p.rot);
         ctx.fillStyle = p.color;
         ctx.shadowColor = p.color; ctx.shadowBlur = 8;
-        const s = p.size;
+        const s = p.size * camera.zoom;
         ctx.fillRect(-s/2, -s/2, s, s);
         ctx.restore();
       }
@@ -10856,6 +10949,14 @@
         ctx.font = "bold 9px monospace";
         ctx.textAlign = "center"; ctx.textBaseline = "top";
         ctx.fillText((convoy.team === playerTeam ? "OUR " : "ENEMY ") + "CONVOY", width/2, height - 14);
+        // convoy 진행도 표시
+        if (convoy.waypoints && convoy.waypoints.length > 0) {
+          const progress = Math.min(1, convoy.waypointIdx / convoy.waypoints.length);
+          ctx.fillStyle = "rgba(255,255,255,0.7)";
+          ctx.font = "8px monospace";
+          ctx.textAlign = "center"; ctx.textBaseline = "top";
+          ctx.fillText(`ROUTE ${Math.round(progress * 100)}%`, width/2, height - 36);
+        }
       }
       // Win/lose overlay — 이제 drawVaultMissionOverlay에서 처리 (여기선 생략)
       if (teamBattleWon!==null && false) {

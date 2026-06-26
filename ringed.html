@@ -2400,10 +2400,11 @@
           recoilAmt = 1.0; shake = Math.max(shake, 3);
         }
       } else {
-        const mobileFireRifle = isMobile && currentWeapon === 0 && mobileControls.aimAtEdge;
+        // 소총(0)과 산탄총(1) 모두 조이스틱 끝까지 밀면 발사
+        const mobileFireRifle = isMobile && (currentWeapon === 0 || currentWeapon === 1) && mobileControls.aimAtEdge;
         // 저격총(VIPER weapon 5)은 손 뗄 때 발사 — 여기서 연사 제외
         const isVIPERSniperMobile = isMobile && currentWeapon === 5 && playerChar && playerChar.id === 2;
-        const mobileFireOther = isMobile && currentWeapon !== 0 && mobileControls.shoot && !isVIPERSniperMobile;
+        const mobileFireOther = isMobile && currentWeapon !== 0 && currentWeapon !== 1 && mobileControls.shoot && !isVIPERSniperMobile;
         if (!isRespawning && (mouse.down || mobileFireRifle || mobileFireOther)) fire();
       }
       // 자동 개틀링: 1초 이상 정지하면 자동 속사
@@ -9505,28 +9506,14 @@
           convoy.waypointIdx++;
         } else {
           const spd = 45 * dt;
-          // Wall avoidance: probe 70px ahead and steer perpendicular
           const nx = dx / dist, ny = dy / dist;
-          const probeX = convoy.x + nx * 70, probeY = convoy.y + ny * 70;
-          let avoidX = 0, avoidY = 0;
-          for (const wall of walls) {
-            if (circleRect(probeX, probeY, 40, wall)) {
-              // push perpendicular to wall normal
-              const wx = wall.x + wall.w/2, wy = wall.y + wall.h/2;
-              const pvx = convoy.y - wy, pvy = -(convoy.x - wx);
-              const pm = Math.hypot(pvx, pvy) || 1;
-              avoidX += pvx/pm * 1.8; avoidY += pvy/pm * 1.8;
-            }
-          }
-          const mvx = nx + avoidX, mvy = ny + avoidY;
-          const mm = Math.hypot(mvx, mvy) || 1;
-          const targetAngle = Math.atan2(mvy, mvx);
+          const targetAngle = Math.atan2(ny, nx);
           let angleDiff = targetAngle - convoy.angle;
           while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
           while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-          convoy.angle += angleDiff * Math.min(1, dt * 4);
-          convoy.x += (mvx/mm) * spd;
-          convoy.y += (mvy/mm) * spd;
+          convoy.angle += angleDiff * Math.min(1, dt * 5);
+          // moveCircle handles walls + doors exactly like AI characters
+          moveCircle(convoy, nx * spd, ny * spd);
         }
       } else {
         // 목표 도착
@@ -9731,7 +9718,7 @@
           convoy = {
             x: c.vX, y: c.vY, team: c.destroyerTeam,
             hp: 3000, maxHp: 3000, angle: 0,
-            w: 120, h: 70, alive: true,
+            r: 35, w: 120, h: 70, alive: true,
             waypoints: c.waypoints, waypointIdx: 0,
             goldLoaded: false, reachedBase: false,
             hitFlash: 0, invuln: 3.0
@@ -11181,187 +11168,104 @@
       const sx = screenX(convoy.x), sy = screenY(convoy.y);
       if (sx < -300 || sx > width + 300 || sy < -300 || sy > height + 300) return;
 
-      // 배기연기 업데이트
-      for (let i = convoySmoke.length - 1; i >= 0; i--) {
-        const p = convoySmoke[i];
-        p.x += p.vx * 0.016; p.y += p.vy * 0.016;
-        p.size += 0.5; p.life -= 0.016;
-        if (p.life <= 0) convoySmoke.splice(i, 1);
-      }
-      // 바퀴 회전
-      convoyWheelAngle += (90 / 12) * 0.016 * 57.3;
-
       const isBlue = convoy.team === 0;
-      const sw = 160 * z, sh = 95 * z;
-      const teamRgb = isBlue ? "20,80,180" : "180,40,40";
-      const plateRgb = isBlue ? "35,65,110" : "110,35,30";
-      const hlRgb = isBlue ? "55,100,160" : "160,55,45";
-      const lightCol = isBlue ? "rgba(0,160,255,1)" : "rgba(255,80,60,1)";
+      const teamColor  = isBlue ? "#2255cc" : "#cc2222";
+      const glowColor  = isBlue ? "rgba(40,120,255,0.7)" : "rgba(255,60,40,0.7)";
+      const goldColor  = "#FFD700";
+      const pulse = 0.7 + 0.3 * Math.sin(t * 4);
 
-      // 배기연기 스폰
-      if (Math.random() < 0.5) {
-        const backAngle = convoy.angle + Math.PI;
-        convoySmoke.push({
-          x: convoy.x + Math.cos(backAngle) * 55 + (Math.random()-0.5)*8,
-          y: convoy.y + Math.sin(backAngle) * 55 + (Math.random()-0.5)*8,
-          vx: Math.cos(backAngle) * 20 + (Math.random()-0.5)*15,
-          vy: Math.sin(backAngle) * 20 + (Math.random()-0.5)*10,
-          size: 6, life: 1.0 + Math.random()*0.5, maxLife: 1.5
-        });
-      }
+      ctx.save();
 
+      // 외부 팀색 발광 링
+      ctx.shadowBlur = 28 * z * pulse;
+      ctx.shadowColor = glowColor;
+      ctx.strokeStyle = teamColor;
+      ctx.lineWidth = 5 * z;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 44 * z, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 본체 원 (팀색 채우기)
+      ctx.fillStyle = convoy.hitFlash > 0 ? "#ffffff" : teamColor;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 38 * z, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 내부 어두운 원
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.beginPath();
+      ctx.arc(sx, sy, 30 * z, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 금괴 아이콘 (중앙 황금 사각형)
       ctx.save();
       ctx.translate(sx, sy);
       ctx.rotate(convoy.angle);
-
-      // L1: 본체
-      ctx.shadowBlur = 18 * z;
-      ctx.shadowColor = `rgba(${teamRgb},0.45)`;
-      const bodyGrad = ctx.createLinearGradient(-sw/2, -sh/2, -sw/2, sh/2);
-      bodyGrad.addColorStop(0, convoy.hitFlash > 0 ? "rgba(255,220,220,1)" : `rgba(${plateRgb},1)`);
-      bodyGrad.addColorStop(0.4, convoy.hitFlash > 0 ? "rgba(255,220,220,1)" : `rgba(${teamRgb},1)`);
-      bodyGrad.addColorStop(1, "rgba(10,10,10,0.9)");
-      ctx.fillStyle = bodyGrad;
-      const br2 = 10 * z;
-      ctx.beginPath();
-      ctx.moveTo(-sw/2+br2,-sh/2); ctx.lineTo(sw/2-br2,-sh/2);
-      ctx.arcTo(sw/2,-sh/2,sw/2,-sh/2+br2,br2);
-      ctx.lineTo(sw/2,sh/2-br2); ctx.arcTo(sw/2,sh/2,sw/2-br2,sh/2,br2);
-      ctx.lineTo(-sw/2+br2,sh/2); ctx.arcTo(-sw/2,sh/2,-sw/2,sh/2-br2,br2);
-      ctx.lineTo(-sw/2,-sh/2+br2); ctx.arcTo(-sw/2,-sh/2,-sw/2+br2,-sh/2,br2);
-      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = goldColor;
+      ctx.shadowBlur = 12 * z;
+      ctx.shadowColor = "rgba(255,220,50,0.9)";
+      ctx.fillRect(-14 * z, -10 * z, 28 * z, 20 * z);
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = `rgba(${hlRgb},1)`; ctx.lineWidth = 2*z; ctx.stroke();
-
-      // L2: 사선 아머 플레이팅
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(-sw/2+br2,-sh/2); ctx.lineTo(sw/2-br2,-sh/2);
-      ctx.arcTo(sw/2,-sh/2,sw/2,-sh/2+br2,br2);
-      ctx.lineTo(sw/2,sh/2-br2); ctx.arcTo(sw/2,sh/2,sw/2-br2,sh/2,br2);
-      ctx.lineTo(-sw/2+br2,sh/2); ctx.arcTo(-sw/2,sh/2,-sw/2,sh/2-br2,br2);
-      ctx.lineTo(-sw/2,-sh/2+br2); ctx.arcTo(-sw/2,-sh/2,-sw/2+br2,-sh/2,br2);
-      ctx.closePath(); ctx.clip();
-      ctx.strokeStyle = `rgba(${hlRgb},0.40)`; ctx.lineWidth = 2.5*z;
-      const aps = 14*z;
-      for (let ai = -3; ai <= 3; ai++) {
-        const aOff = ai * aps;
+      ctx.strokeStyle = "rgba(180,130,0,1)";
+      ctx.lineWidth = 2 * z;
+      ctx.strokeRect(-14 * z, -10 * z, 28 * z, 20 * z);
+      // 금괴 줄
+      ctx.strokeStyle = "rgba(255,245,120,0.5)";
+      ctx.lineWidth = 1.5 * z;
+      for (let gi = 1; gi < 3; gi++) {
         ctx.beginPath();
-        ctx.moveTo(-sw/2 + aOff - sh, -sh/2);
-        ctx.lineTo(-sw/2 + aOff, sh/2);
+        ctx.moveTo(-14*z, -10*z + gi * 7*z);
+        ctx.lineTo(14*z, -10*z + gi * 7*z);
         ctx.stroke();
       }
+      // 이동 방향 화살표
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.beginPath();
+      ctx.moveTo(38*z, 0);
+      ctx.lineTo(28*z, -8*z);
+      ctx.lineTo(28*z, 8*z);
+      ctx.closePath();
+      ctx.fill();
       ctx.restore();
 
-      // L3: 바퀴 4개
-      const wheelPos = [[-sw*0.38,-sh*0.52],[sw*0.34,-sh*0.52],[-sw*0.38,sh*0.48],[sw*0.34,sh*0.48]];
-      for (const [wx, wy] of wheelPos) {
-        ctx.save();
-        ctx.translate(wx, wy);
-        ctx.rotate(convoyWheelAngle * Math.PI / 180);
-        ctx.strokeStyle = "rgba(25,25,25,1)"; ctx.lineWidth = 8*z;
-        ctx.beginPath(); ctx.arc(0, 0, 12*z, 0, Math.PI*2); ctx.stroke();
-        ctx.fillStyle = "rgba(70,70,75,1)";
-        ctx.beginPath(); ctx.arc(0, 0, 8*z, 0, Math.PI*2); ctx.fill();
-        ctx.strokeStyle = "rgba(100,100,110,1)"; ctx.lineWidth = 1.5*z;
-        for (let si = 0; si < 4; si++) {
-          const sa = (si/4)*Math.PI*2;
-          ctx.beginPath();
-          ctx.moveTo(0,0); ctx.lineTo(Math.cos(sa)*6*z, Math.sin(sa)*6*z);
-          ctx.stroke();
-        }
-        ctx.fillStyle = "rgba(140,130,120,1)";
-        ctx.beginPath(); ctx.arc(0,0,3*z,0,Math.PI*2); ctx.fill();
-        ctx.restore();
-      }
-
-      // L4: 금 화물칸
-      ctx.shadowBlur = 15*z; ctx.shadowColor = "rgba(255,200,50,0.75)";
-      const cgGrad = ctx.createLinearGradient(-28*z, -sh/2-22*z, -28*z, -sh/2);
-      cgGrad.addColorStop(0, "rgba(255,220,80,1)");
-      cgGrad.addColorStop(0.5, "rgba(180,130,25,1)");
-      cgGrad.addColorStop(1, "rgba(220,170,50,1)");
-      ctx.fillStyle = cgGrad;
+      // 팀 테두리 링 (얇은 흰색)
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.lineWidth = 2 * z;
       ctx.beginPath();
-      ctx.rect(-28*z, -sh/2 - 22*z, 56*z, 22*z);
-      ctx.fill(); ctx.shadowBlur = 0;
-      ctx.strokeStyle = "rgba(100,75,15,1)"; ctx.lineWidth = 2*z; ctx.stroke();
-      for (let gi = 0; gi < 3; gi++) {
-        ctx.fillStyle = "rgba(255,240,160,0.25)";
-        ctx.fillRect(-28*z + 4*z, -sh/2 - 22*z + (gi+0.5)*6*z, 48*z, 2*z);
-      }
+      ctx.arc(sx, sy, 38 * z, 0, Math.PI * 2);
+      ctx.stroke();
 
-      // L5: 전면 헤드라이트
-      for (const hl of [[sw/2-10*z, -10*z],[sw/2-10*z, 10*z]]) {
-        ctx.fillStyle = "rgba(255,255,220,1)";
-        ctx.beginPath(); ctx.arc(hl[0], hl[1], 5*z, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = isBlue ? "rgba(180,220,255,0.12)" : "rgba(255,220,180,0.12)";
-        ctx.beginPath();
-        ctx.moveTo(hl[0], hl[1]);
-        ctx.arc(hl[0], hl[1], 60*z, -Math.PI*0.25, Math.PI*0.25);
-        ctx.closePath(); ctx.fill();
-      }
-
-      // L6: 팀 상태 라이트
-      const blinkOn = Math.floor(t * 2.5) % 2 === 0;
-      for (const lp2 of [[-15*z, -sh/2-4*z],[15*z, -sh/2-4*z]]) {
-        if (blinkOn) {
-          ctx.fillStyle = lightCol;
-          ctx.shadowBlur = 14; ctx.shadowColor = lightCol;
-        } else {
-          ctx.fillStyle = "rgba(20,20,20,1)"; ctx.shadowBlur = 0;
-        }
-        ctx.beginPath(); ctx.arc(lp2[0], lp2[1], 4*z, 0, Math.PI*2); ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-
-      // L7: 방향 화살표
-      ctx.fillStyle = "rgba(255,255,255,0.65)";
-      ctx.shadowBlur = 6; ctx.shadowColor = "rgba(255,255,255,0.4)";
-      ctx.beginPath();
-      ctx.moveTo(9*z, -sh/2+4*z); ctx.lineTo(0, -sh/2+13*z); ctx.lineTo(-9*z, -sh/2+4*z);
-      ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
-
-      ctx.restore(); // rotate/translate 종료
-
-      // L8: HP바 + 아이콘 (월드 회전 해제 후)
+      // HP 바 (위쪽)
       const hpR = convoy.hp / convoy.maxHp;
-      const bw2 = 100*z, bh2 = 10*z;
-      const bx2 = sx - bw2/2, by2 = sy - sh/2 - 28*z;
-      ctx.fillStyle = "rgba(20,20,20,0.85)"; ctx.fillRect(bx2, by2, bw2, bh2);
-      ctx.fillStyle = hpR > 0.5 ? "rgba(80,200,80,1)" : hpR > 0.25 ? "rgba(255,165,0,1)" : "rgba(255,50,50,1)";
-      ctx.fillRect(bx2, by2, bw2 * hpR, bh2);
-      ctx.strokeStyle = "#555"; ctx.lineWidth = 1; ctx.strokeRect(bx2, by2, bw2, bh2);
+      const bw = 88 * z, bh = 8 * z;
+      const bx = sx - bw/2, by = sy - 56 * z;
+      ctx.fillStyle = "rgba(0,0,0,0.75)";
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = hpR > 0.5 ? "#44dd44" : hpR > 0.25 ? "#ffaa00" : "#ff3333";
+      ctx.fillRect(bx, by, bw * hpR, bh);
+      ctx.strokeStyle = "rgba(255,255,255,0.4)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx, by, bw, bh);
 
-      // CONVOY 텍스트
-      ctx.fillStyle = `rgba(${hlRgb},1)`;
-      ctx.font = `bold ${Math.round(11*z)}px monospace`;
-      ctx.textAlign = "center"; ctx.textBaseline = "bottom";
-      ctx.shadowBlur = 6; ctx.shadowColor = `rgba(${hlRgb},0.7)`;
-      ctx.fillText("CONVOY", sx, by2 - 2*z);
+      // CONVOY 레이블
+      ctx.fillStyle = goldColor;
+      ctx.font = `bold ${Math.round(13 * z)}px monospace`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = "rgba(255,200,50,0.8)";
+      ctx.fillText("CONVOY", sx, by - 3 * z);
       ctx.shadowBlur = 0;
 
       // 경로 진행률
       if (convoy.waypoints && convoy.waypointIdx >= 0) {
         const prog = Math.min(1, convoy.waypointIdx / Math.max(1, convoy.waypoints.length - 1));
-        const rtext = `ROUTE ${Math.round(prog*100)}%`;
         ctx.fillStyle = "rgba(255,255,200,0.85)";
-        ctx.font = `bold ${Math.round(9*z)}px monospace`;
-        ctx.textBaseline = "bottom";
-        ctx.shadowBlur = 6; ctx.shadowColor = "rgba(255,200,50,0.7)";
-        ctx.fillText(rtext, sx, by2 - 14*z);
-        ctx.shadowBlur = 0;
+        ctx.font = `bold ${Math.round(10 * z)}px monospace`;
+        ctx.fillText(`ROUTE ${Math.round(prog * 100)}%`, sx, by - 18 * z);
       }
 
-      // 배기연기 렌더
-      ctx.save();
-      for (const sp of convoySmoke) {
-        const spx = screenX(sp.x), spy = screenY(sp.y);
-        ctx.globalAlpha = (sp.life / sp.maxLife) * 0.5;
-        ctx.fillStyle = "rgba(140,130,120,1)";
-        ctx.beginPath(); ctx.arc(spx, spy, sp.size * z, 0, Math.PI*2); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
       ctx.restore();
     }
 

@@ -309,6 +309,17 @@
     let isCinematic = false;      // 시네마틱 진행 중 여부
     let confettiParticles = [];   // 승리 폭죽 파티클
     let vaultMissionResult = null; // null | "win" | "lose"
+    let cinematicCamera = {active:false, x:0, y:0, targetX:0, targetY:0, lerpSpeed:3, zoom:0.9};
+    let letterboxT = 0;
+    let goldBars = [];
+    let armorPieceAnims = [];
+    let vaultParticles = [];
+    let turretSmoke = [];
+    let convoySmoke = [];
+    let convoyMaterializeT = 0;
+    let cargoLoadProgress = 0;
+    let screenWhiteFlash = 0;
+    let convoyWheelAngle = 0;
     const props = [];
     const walls = [];
     const doors = [];
@@ -3369,6 +3380,18 @@
     }
 
     function updateCamera(dt, worldMouse) {
+      // 시네마틱 카메라 제어
+      if (isCinematic && cinematicCamera.active) {
+        const ff = 1 - Math.exp(-cinematicCamera.lerpSpeed * dt);
+        cinematicCamera.x += (cinematicCamera.targetX - cinematicCamera.x) * ff;
+        cinematicCamera.y += (cinematicCamera.targetY - cinematicCamera.y) * ff;
+        camera.zoom = cinematicCamera.zoom;
+        const viewW = width / camera.zoom;
+        const viewH = height / camera.zoom;
+        camera.x = clamp(cinematicCamera.x - viewW/2, 0, Math.max(0, world.w - viewW));
+        camera.y = clamp(cinematicCamera.y - viewH/2, 0, Math.max(0, world.h - viewH));
+        return; // skip normal camera update
+      }
       const _p2cam = (mp.role === "host" && player2) ? player2 : (mp.role === "client" && remotePlayer ? remotePlayer : null);
       const isSplitScreen = !!_p2cam;
       const effectiveWidth = isSplitScreen ? width / 2 : width;
@@ -5044,6 +5067,14 @@
       if (screenKillFlash > 0) {
         ctx.fillStyle = `rgba(255,210,0,${Math.min(0.25, screenKillFlash * 0.35)})`;
         ctx.fillRect(0, 0, width, height);
+      }
+      if (screenWhiteFlash > 0) {
+        ctx.save();
+        ctx.setTransform(scale, 0, 0, scale, splitPanelOffsetX * scale, 0);
+        ctx.fillStyle = `rgba(255,255,255,${Math.min(1, screenWhiteFlash)})`;
+        ctx.fillRect(0, 0, width, height);
+        ctx.restore();
+        screenWhiteFlash = Math.max(0, screenWhiteFlash - dt * 4);
       }
       drawRaidWarningOverlay();
       if (splitPanelOffsetX > 0) {
@@ -9382,6 +9413,17 @@
       armorSuitCharId = -1;
       cinematicState = null;
       isCinematic = false;
+      cinematicCamera = {active:false, x:0, y:0, targetX:0, targetY:0, lerpSpeed:3, zoom:0.9};
+      letterboxT = 0;
+      goldBars = [];
+      armorPieceAnims = [];
+      vaultParticles = [];
+      turretSmoke = [];
+      convoySmoke = [];
+      convoyMaterializeT = 0;
+      cargoLoadProgress = 0;
+      screenWhiteFlash = 0;
+      convoyWheelAngle = 0;
       confettiParticles = [];
       vaultMissionResult = null;
       teamBattleWon=null; tbTimer=0; playerRespawnTimer=0; tbKills=[0,0];
@@ -9393,10 +9435,10 @@
 
     function setupTurrets() {
       turrets = [
-        { x:160, y:1070, team:0, hp:400, maxHp:400, angle:0, shootCd:0, alive:true, range:520, hitFlash:0, r:22 },
-        { x:160, y:1330, team:0, hp:400, maxHp:400, angle:0, shootCd:0, alive:true, range:520, hitFlash:0, r:22 },
-        { x:3140, y:1070, team:1, hp:400, maxHp:400, angle:Math.PI, shootCd:0, alive:true, range:520, hitFlash:0, r:22 },
-        { x:3140, y:1330, team:1, hp:400, maxHp:400, angle:Math.PI, shootCd:0, alive:true, range:520, hitFlash:0, r:22 }
+        { x:160, y:1070, team:0, hp:400, maxHp:400, angle:0, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
+        { x:160, y:1330, team:0, hp:400, maxHp:400, angle:0, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
+        { x:3140, y:1070, team:1, hp:400, maxHp:400, angle:Math.PI, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
+        { x:3140, y:1330, team:1, hp:400, maxHp:400, angle:Math.PI, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 }
       ];
     }
 
@@ -9436,6 +9478,7 @@
               dmg: 28, life: 0.8, team: turret.team, fromTurret: true,
               isBullet: true
             });
+            turret.fireFlash = 0.12;
           }
         } else {
           turret.angle += 0.5 * dt;
@@ -10462,35 +10505,133 @@
     function drawSpawnPlatforms() {
       if (gameMode !== "teambattle") return;
       const z = camera.zoom;
+      const t = Date.now() * 0.001;
       for (const plat of spawnPlatforms) {
         const sx = screenX(plat.x), sy = screenY(plat.y);
         const sr = plat.r * z;
-        const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.002 + plat.glowPhase);
-        const col = plat.team === 0 ? [40, 80, 220] : [220, 40, 40];
+        if (sx + sr < -50 || sx - sr > width + 50 || sy + sr < -50 || sy - sr > height + 50) continue;
+        const isBlue = plat.team === 0;
+        const coreR = isBlue ? [0,180,255] : [255,60,60];
+        const coreG = isBlue ? [0,60,120] : [120,20,20];
         ctx.save();
-        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-        grad.addColorStop(0, `rgba(${col[0]},${col[1]},${col[2]},0.50)`);
-        grad.addColorStop(0.7, `rgba(${col[0]},${col[1]},${col[2]},0.25)`);
-        grad.addColorStop(1, `rgba(${col[0]},${col[1]},${col[2]},0.05)`);
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
-        // 맥동 외곽 링
-        ctx.strokeStyle = `rgba(${col[0]+80},${col[1]+80},${col[2]+80},${0.6 + pulse * 0.4})`;
-        ctx.lineWidth = 2 + pulse * 2;
-        ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.stroke();
-        // 착지 마커 4개
-        ctx.fillStyle = `rgba(255,255,255,0.35)`;
-        for (let i = 0; i < 4; i++) {
-          const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-          const mx = sx + Math.cos(a) * sr * 0.65;
-          const my = sy + Math.sin(a) * sr * 0.65;
-          ctx.beginPath(); ctx.arc(mx, my, 5 * z, 0, Math.PI * 2); ctx.fill();
+
+        // L0: 바닥 그림자 타원
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + sr * 0.15, sr * 1.1, sr * 0.32, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // L1: 경고 스트라이프 외곽 링 (16개 쐐기)
+        const stripeRot = t * 0.4;
+        const innerR = sr, outerR = sr * 1.14;
+        for (let i = 0; i < 16; i++) {
+          const a1 = stripeRot + (i / 16) * Math.PI * 2;
+          const a2 = stripeRot + ((i + 0.85) / 16) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(sx + Math.cos(a1)*innerR, sy + Math.sin(a1)*innerR);
+          ctx.arc(sx, sy, outerR, a1, a2);
+          ctx.arc(sx, sy, innerR, a2, a1, true);
+          ctx.closePath();
+          const stripCol = i % 2 === 0
+            ? `rgba(${coreR[0]},${coreR[1]},${coreR[2]},0.75)`
+            : `rgba(10,10,40,0.65)`;
+          ctx.fillStyle = stripCol;
+          ctx.fill();
         }
-        // 중앙 텍스트
-        ctx.fillStyle = `rgba(255,255,255,0.7)`;
-        ctx.font = `bold ${Math.round(13 * z)}px monospace`;
+
+        // L2: 주 바닥 플레이트
+        ctx.shadowBlur = 30 * z;
+        ctx.shadowColor = `rgba(${coreR[0]},${coreR[1]},${coreR[2]},0.7)`;
+        const grad2 = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+        grad2.addColorStop(0, `rgba(${coreR[0]},${coreR[1]},${coreR[2]},0.90)`);
+        grad2.addColorStop(0.55, `rgba(${coreG[0]},${coreG[1]},${coreG[2]},0.82)`);
+        grad2.addColorStop(0.85, `rgba(${coreG[0]},${coreG[1]},${coreG[2]},0.60)`);
+        grad2.addColorStop(1, `rgba(0,0,0,0.40)`);
+        ctx.fillStyle = grad2;
+        ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // L3: 헥사 패턴 (원 클립 후)
+        ctx.save();
+        ctx.beginPath(); ctx.arc(sx, sy, sr * 0.98, 0, Math.PI * 2); ctx.clip();
+        const hexSize = 28 * z;
+        const hexH = hexSize * Math.sqrt(3);
+        const startX = sx - sr - hexSize;
+        const startY = sy - sr - hexH;
+        ctx.strokeStyle = `rgba(${coreR[0]},${coreR[1]},${coreR[2]},0.22)`;
+        ctx.lineWidth = 1;
+        for (let hx = startX; hx < sx + sr + hexSize; hx += hexSize * 1.5) {
+          for (let hy = startY; hy < sy + sr + hexH; hy += hexH) {
+            const offset = Math.round((hx - startX) / (hexSize * 1.5)) % 2 * (hexH / 2);
+            const hcy = hy + offset;
+            ctx.beginPath();
+            for (let v = 0; v < 6; v++) {
+              const va = (v / 6) * Math.PI * 2 + Math.PI / 6;
+              const vx2 = hx + Math.cos(va) * hexSize * 0.5;
+              const vy2 = hcy + Math.sin(va) * hexSize * 0.5;
+              if (v === 0) ctx.moveTo(vx2, vy2); else ctx.lineTo(vx2, vy2);
+            }
+            ctx.closePath(); ctx.stroke();
+          }
+        }
+        ctx.restore();
+
+        // L4: 착지 마커 8개
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          const mx = sx + Math.cos(a) * sr * 0.78;
+          const my = sy + Math.sin(a) * sr * 0.78;
+          const mAlpha = 0.6 + Math.sin(t * 3 + i * 0.8) * 0.35;
+          ctx.save();
+          ctx.globalAlpha = mAlpha;
+          ctx.translate(mx, my); ctx.rotate(a + Math.PI / 4);
+          ctx.fillStyle = isBlue ? `rgba(0,220,255,1)` : `rgba(255,180,0,1)`;
+          ctx.shadowBlur = 8 * z; ctx.shadowColor = ctx.fillStyle;
+          const ms = 6 * z;
+          ctx.fillRect(-ms/2, -1.5*z, ms, 3*z);
+          ctx.fillRect(-1.5*z, -ms/2, 3*z, ms);
+          ctx.restore();
+        }
+
+        // L5: 중앙 글로우 코어
+        ctx.shadowBlur = 45 * z;
+        ctx.shadowColor = `rgba(${coreR[0]},${coreR[1]},${coreR[2]},1.0)`;
+        const grad5 = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr * 0.38);
+        grad5.addColorStop(0, `rgba(255,255,255,0.95)`);
+        grad5.addColorStop(0.3, `rgba(${coreR[0]},${coreR[1]},${coreR[2]},1.0)`);
+        grad5.addColorStop(0.7, `rgba(${coreR[0]},${coreR[1]},${coreR[2]},0.60)`);
+        grad5.addColorStop(1, `rgba(0,0,0,0)`);
+        ctx.fillStyle = grad5;
+        ctx.beginPath(); ctx.arc(sx, sy, sr * 0.38, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // L6: 맥동 링 3개
+        const ringConfigs = [
+          {r:1.0,  speed:1.8, phase:0,   lw:3, alpha:0.55},
+          {r:0.78, speed:2.4, phase:1.0, lw:2, alpha:0.40},
+          {r:0.53, speed:3.1, phase:2.2, lw:1.5, alpha:0.28},
+        ];
+        for (const rc of ringConfigs) {
+          const pulse = Math.sin(t * rc.speed + rc.phase);
+          const rr = sr * rc.r + pulse * 6 * z;
+          ctx.strokeStyle = `rgba(${coreR[0]},${coreR[1]},${coreR[2]},${rc.alpha + pulse * 0.15})`;
+          ctx.lineWidth = rc.lw * z;
+          ctx.shadowBlur = 12 * z; ctx.shadowColor = `rgba(${coreR[0]},${coreR[1]},${coreR[2]},0.6)`;
+          ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+
+        // L7: SPAWN 텍스트
+        ctx.fillStyle = "rgba(255,255,255,0.92)";
+        ctx.font = `bold ${Math.round(16 * z)}px 'Arial Black', sans-serif`;
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(plat.team === 0 ? "BLUE" : "RED", sx, sy);
+        ctx.shadowBlur = 15 * z; ctx.shadowColor = `rgba(${coreR[0]},${coreR[1]},${coreR[2]},0.9)`;
+        ctx.fillText("SPAWN", sx, sy + 6 * z);
+        ctx.shadowBlur = 0;
+
         ctx.restore();
       }
     }

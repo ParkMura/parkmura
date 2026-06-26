@@ -165,6 +165,9 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 133 | 브롤스타즈식 ray-cast 시야 | `drawRaycastLight()` — 120개 ray 전방위 발사, 벽 히트 다각형 clip, radial gradient 페이드; 배경 어둠 0.88 |
 | 134 | 우리편 AI 사격 버그 수정 | `updateAI()` — `if (!defenseMode)` 제거, defenseMode여도 적 AI 전체 스캔; defBonus로 근접 우선 |
 | 135 | 화면 어두워짐 버그 수정 | lightCtx `destination-out` 상태 누출 방지 — `drawLightTexture()` 및 빛 드로잉 블록 끝에 `globalCompositeOperation = "source-over"` 리셋 추가 |
+| 136 | 화면 어두워짐 완전 수정 | lightCtx 전체 destination-out 블록 save/restore 래핑 |
+| 137 | 시야각 부드럽게 개선 | NUM_RAYS 120→240, 그라디언트 6단계, 소프트엣지 보조 그라디언트 |
+| 138 | 팀별 총알 색상 구분 | 아군=파란색, 적=빨간색, enemyTracers에 team 프로퍼티 추가 |
 
 ## 미구현 (요청됨)
 - 주소창 숨기기

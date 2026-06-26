@@ -6801,16 +6801,15 @@
       ctx.lineCap = "round";
       for (const tr of enemyTracers) {
         const alpha = Math.max(0, tr.life / tr.maxLife);
-        // 외곽 발광 (빨간 적 트레이서)
-        ctx.strokeStyle = "rgba(255,60,30," + (0.45 * alpha) + ")";
-        ctx.lineWidth = 4;
+        const isAlly = tr.team !== undefined && tr.team === playerTeam;
+        const glowC    = isAlly ? `rgba(100,180,255,${0.45*alpha})` : `rgba(255,60,30,${0.45*alpha})`;
+        const coreC    = isAlly ? `rgba(180,220,255,${0.9*alpha})`  : `rgba(255,130,80,${0.9*alpha})`;
+        const highlC   = isAlly ? `rgba(255,255,255,${0.5*alpha})`  : `rgba(255,220,200,${0.5*alpha})`;
+        ctx.strokeStyle = glowC;  ctx.lineWidth = 4;
         ctx.beginPath(); ctx.moveTo(tr.x1, tr.y1); ctx.lineTo(tr.x2, tr.y2); ctx.stroke();
-        // 메인 코어
-        ctx.strokeStyle = "rgba(255,130,80," + (0.9 * alpha) + ")";
-        ctx.lineWidth = 1.8;
+        ctx.strokeStyle = coreC;  ctx.lineWidth = 1.8;
         ctx.beginPath(); ctx.moveTo(tr.x1, tr.y1); ctx.lineTo(tr.x2, tr.y2); ctx.stroke();
-        ctx.strokeStyle = "rgba(255,220,200," + (0.5 * alpha) + ")";
-        ctx.lineWidth = 0.7;
+        ctx.strokeStyle = highlC; ctx.lineWidth = 0.7;
         ctx.beginPath(); ctx.moveTo(tr.x1, tr.y1); ctx.lineTo(tr.x2, tr.y2); ctx.stroke();
       }
       ctx.restore();
@@ -7043,6 +7042,7 @@
       lightCtx.fillStyle = "rgba(0, 0, 0, 0.88)";
       lightCtx.fillRect(0, 0, width, height);
 
+      lightCtx.save();
       lightCtx.globalCompositeOperation = "destination-out";
       drawInstalledLights(lightCtx);
       drawKillLights(lightCtx);
@@ -7060,6 +7060,7 @@
       for (const tb of taserBullets) {
         drawLightTexture(lightCtx, assets.lightSmall, screenX(tb.x), screenY(tb.y), 0, 80 * z, 80 * z, 0.5);
       }
+      lightCtx.restore();
       // globalCompositeOperation 리셋 — destination-out 상태가 다음 프레임으로 누출되는 것 방지
       lightCtx.globalCompositeOperation = "source-over";
       lightCtx.globalAlpha = 1;
@@ -7279,7 +7280,7 @@
     // wx, wy: 플레이어 월드 좌표 / maxRadius: 월드 단위 시야 반경 / energy: 밝기
     function drawRaycastLight(target, wx, wy, maxRadius, energy) {
       const z = camera.zoom;
-      const NUM_RAYS = 120;          // ray 개수 (성능 vs 품질)
+      const NUM_RAYS = 240;          // ray 개수 (성능 vs 품질)
       const blockers = explosionBlockers();
 
       // 각 ray 방향으로 가장 가까운 벽 히트 거리를 구함
@@ -7317,10 +7318,21 @@
       // 2단계: clip 영역 안에 radial gradient로 자연스러운 밝기 페이드 적용
       const grad = target.createRadialGradient(spx, spy, 0, spx, spy, screenRadius);
       grad.addColorStop(0,    "rgba(0,0,0," + (energy * 0.95) + ")");
-      grad.addColorStop(0.35, "rgba(0,0,0," + (energy * 0.82) + ")");
-      grad.addColorStop(0.72, "rgba(0,0,0," + (energy * 0.45) + ")");
+      grad.addColorStop(0.15, "rgba(0,0,0," + (energy * 0.88) + ")");
+      grad.addColorStop(0.35, "rgba(0,0,0," + (energy * 0.72) + ")");
+      grad.addColorStop(0.55, "rgba(0,0,0," + (energy * 0.50) + ")");
+      grad.addColorStop(0.75, "rgba(0,0,0," + (energy * 0.22) + ")");
       grad.addColorStop(1,    "rgba(0,0,0,0)");
       target.fillStyle = grad;
+      target.beginPath();
+      target.arc(spx, spy, screenRadius, 0, Math.PI * 2);
+      target.fill();
+
+      // 폴리곤 경계 소프트닝
+      const softGrad = target.createRadialGradient(spx, spy, screenRadius * 0.65, spx, spy, screenRadius * 0.95);
+      softGrad.addColorStop(0, "rgba(0,0,0,0)");
+      softGrad.addColorStop(1, "rgba(0,0,0," + (energy * 0.35) + ")");
+      target.fillStyle = softGrad;
       target.beginPath();
       target.arc(spx, spy, screenRadius, 0, Math.PI * 2);
       target.fill();
@@ -9744,7 +9756,7 @@
           const wallBlocked = wallRay.solid !== null;
 
           // 트레이서: 벽에 막히면 벽까지만, 아니면 목표까지
-          enemyTracers.push({ x1:tx1, y1:ty1, x2:wallRay.x, y2:wallRay.y, life:0.18, maxLife:0.18 });
+          enemyTracers.push({ x1:tx1, y1:ty1, x2:wallRay.x, y2:wallRay.y, life:0.18, maxLife:0.18, team:ai.team });
           burst(tx1, ty1, ai.team===playerTeam ? "#4488ff" : "#ff6633", 2);
 
           // 벽에 막히지 않았을 때만 데미지
@@ -10963,7 +10975,7 @@
       }
       if (data.tracers) {
         tracers.length = 0;
-        for (const t of data.tracers) tracers.push({ x1: t.x1, y1: t.y1, x2: t.x2, y2: t.y2, life: t.life, maxLife: t.maxLife });
+        for (const t of data.tracers) tracers.push({ x1: t.x1, y1: t.y1, x2: t.x2, y2: t.y2, life: t.life, maxLife: t.maxLife, team: t.team });
       }
     }
 

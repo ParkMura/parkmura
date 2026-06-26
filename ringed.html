@@ -9502,11 +9502,100 @@
       }
     }
 
+    function buildConvoyGrid() {
+      const cs = 64;
+      const cols = Math.ceil(world.w / cs) + 1;
+      const rows = Math.ceil(world.h / cs) + 1;
+      const blocked = new Uint8Array(cols * rows);
+      const margin = 28;
+      for (const wall of walls) {
+        const x0 = Math.max(0, Math.floor((wall.x - margin) / cs));
+        const x1 = Math.min(cols - 1, Math.ceil((wall.x + wall.w + margin) / cs));
+        const y0 = Math.max(0, Math.floor((wall.y - margin) / cs));
+        const y1 = Math.min(rows - 1, Math.ceil((wall.y + wall.h + margin) / cs));
+        for (let r = y0; r <= y1; r++)
+          for (let c = x0; c <= x1; c++)
+            blocked[r * cols + c] = 1;
+      }
+      return { blocked, cols, rows, cs };
+    }
+
+    function findConvoyPath(fromX, fromY, toX, toY) {
+      const { blocked, cols, rows, cs } = buildConvoyGrid();
+      const sc = clamp(Math.floor(fromX / cs), 0, cols - 1);
+      const sr = clamp(Math.floor(fromY / cs), 0, rows - 1);
+      const gc = clamp(Math.floor(toX / cs), 0, cols - 1);
+      const gr = clamp(Math.floor(toY / cs), 0, rows - 1);
+      const key = (c, r) => r * cols + c;
+      const startK = key(sc, sr), goalK = key(gc, gr);
+      const gScore = new Float32Array(cols * rows).fill(Infinity);
+      gScore[startK] = 0;
+      const parent = new Int32Array(cols * rows).fill(-1);
+      const open = [startK];
+      const heuristic = (c, r) => Math.abs(c - gc) + Math.abs(r - gr);
+      const dirs = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+      let iterations = 0;
+      while (open.length > 0 && iterations++ < 3000) {
+        open.sort((a, b) => (gScore[a] + heuristic(a % cols, (a / cols) | 0)) -
+                             (gScore[b] + heuristic(b % cols, (b / cols) | 0)));
+        const cur = open.shift();
+        if (cur === goalK) {
+          const path = [];
+          let k = cur;
+          while (k !== startK && parent[k] >= 0) {
+            const c = k % cols, r = (k / cols) | 0;
+            path.unshift({ x: c * cs + cs / 2, y: r * cs + cs / 2 });
+            k = parent[k];
+          }
+          path.push({ x: toX, y: toY });
+          return path;
+        }
+        const cc = cur % cols, cr = (cur / cols) | 0;
+        for (const [dc, dr] of dirs) {
+          const nc = cc + dc, nr = cr + dr;
+          if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+          const nk = key(nc, nr);
+          if (blocked[nk]) continue;
+          const step = (dc !== 0 && dr !== 0) ? 1.41 : 1.0;
+          const ng = gScore[cur] + step;
+          if (ng < gScore[nk]) {
+            gScore[nk] = ng;
+            parent[nk] = cur;
+            open.push(nk);
+          }
+        }
+      }
+      return null;
+    }
+
     function updateConvoy(dt) {
       if (!convoy || !convoy.alive || isCinematic) return;
       convoy.hitFlash = Math.max(0, convoy.hitFlash - dt);
-      convoy.invuln = Math.max(0, convoy.invuln - dt);
+      convoy.invuln  = Math.max(0, convoy.invuln  - dt);
       if (!convoy.goldLoaded) return;
+
+      // 연기 파티클 생성 + 업데이트
+      if (convoy.waypointIdx < convoy.waypoints.length && Math.random() < 0.35) {
+        const tailX = convoy.x - Math.cos(convoy.angle) * 50;
+        const tailY = convoy.y - Math.sin(convoy.angle) * 50;
+        convoySmoke.push({
+          x: tailX + (Math.random() - 0.5) * 12,
+          y: tailY + (Math.random() - 0.5) * 12,
+          life: 0.8 + Math.random() * 0.6, maxLife: 1.4,
+          size: 4 + Math.random() * 5,
+          vx: (Math.random() - 0.5) * 14, vy: (Math.random() - 0.5) * 14
+        });
+      }
+      for (let i = convoySmoke.length - 1; i >= 0; i--) {
+        const s = convoySmoke[i];
+        s.x += s.vx * dt; s.y += s.vy * dt;
+        s.life -= dt;
+        if (s.life <= 0) convoySmoke.splice(i, 1);
+      }
+
+      // 바퀴 회전
+      convoyWheelAngle += dt * 5.5;
+
       // 웨이포인트 이동
       if (convoy.waypointIdx < convoy.waypoints.length) {
         const wp = convoy.waypoints[convoy.waypointIdx];
@@ -9514,16 +9603,32 @@
         const dist = Math.hypot(dx, dy);
         if (dist < 40) {
           convoy.waypointIdx++;
+          convoy.stuckTimer = 0;
         } else {
           const spd = 45 * dt;
           const nx = dx / dist, ny = dy / dist;
           const targetAngle = Math.atan2(ny, nx);
           let angleDiff = targetAngle - convoy.angle;
-          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          while (angleDiff >  Math.PI) angleDiff -= Math.PI * 2;
           while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
           convoy.angle += angleDiff * Math.min(1, dt * 5);
-          // moveCircle handles walls + doors exactly like AI characters
+          const prevX = convoy.x, prevY = convoy.y;
           moveCircle(convoy, nx * spd, ny * spd);
+          const moved = Math.hypot(convoy.x - prevX, convoy.y - prevY);
+          if (moved < spd * 0.25) {
+            convoy.stuckTimer = (convoy.stuckTimer || 0) + dt;
+          } else {
+            convoy.stuckTimer = Math.max(0, (convoy.stuckTimer || 0) - dt * 3);
+          }
+          // 0.6초 이상 막히면 A* 경로 재탐색
+          if ((convoy.stuckTimer || 0) > 0.6) {
+            convoy.stuckTimer = 0;
+            const finalWp = convoy.waypoints[convoy.waypoints.length - 1];
+            const newPath = findConvoyPath(convoy.x, convoy.y, finalWp.x, finalWp.y);
+            if (newPath && newPath.length > 0) {
+              convoy.waypoints = convoy.waypoints.slice(0, convoy.waypointIdx).concat(newPath);
+            }
+          }
         }
       } else {
         // 목표 도착
@@ -11189,106 +11294,219 @@
       const sx = screenX(convoy.x), sy = screenY(convoy.y);
       if (sx < -300 || sx > width + 300 || sy < -300 || sy > height + 300) { ctx.restore(); return; }
 
-      const isBlue = convoy.team === 0;
-      const teamColor  = isBlue ? "#2255cc" : "#cc2222";
-      const glowColor  = isBlue ? "rgba(40,120,255,0.7)" : "rgba(255,60,40,0.7)";
-      const goldColor  = "#FFD700";
-      const pulse = 0.7 + 0.3 * Math.sin(t * 4);
+      const isBlue     = convoy.team === 0;
+      const teamLight  = isBlue ? "#2255cc"              : "#cc2222";
+      const teamGlow   = isBlue ? "rgba(40,120,255,0.7)" : "rgba(255,60,40,0.7)";
+      const goldC      = "#c8960c";
+      const goldBright = "#FFD700";
+      const armorDark  = "#1c1c1c";
+      const armorMid   = "#2e2e2e";
+      const armorLight = "#484848";
+      const rubber     = "#111111";
+      const pulse      = 0.6 + 0.4 * Math.sin(t * 3.5);
 
+      // ── 연기 파티클 렌더 (월드좌표 기반) ──────────────────
       ctx.save();
+      for (const s of convoySmoke) {
+        const ratio = 1 - s.life / s.maxLife;
+        const alpha = (1 - ratio) * 0.45;
+        const sr2 = (s.size * (1 + ratio * 2)) * z;
+        const spx = screenX(s.x), spy = screenY(s.y);
+        ctx.beginPath();
+        ctx.arc(spx, spy, sr2, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(80,70,60,${alpha.toFixed(2)})`;
+        ctx.fill();
+      }
+      ctx.restore();
 
-      // 외부 팀색 발광 링
-      ctx.shadowBlur = 28 * z * pulse;
-      ctx.shadowColor = glowColor;
-      ctx.strokeStyle = teamColor;
-      ctx.lineWidth = 5 * z;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 44 * z, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // 본체 원 (팀색 채우기)
-      ctx.fillStyle = convoy.hitFlash > 0 ? "#ffffff" : teamColor;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 38 * z, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 내부 어두운 원
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
-      ctx.beginPath();
-      ctx.arc(sx, sy, 30 * z, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 금괴 아이콘 (중앙 황금 사각형)
+      // ── 차체 (convoy.angle 방향으로 회전) ──────────────────
       ctx.save();
       ctx.translate(sx, sy);
       ctx.rotate(convoy.angle);
-      ctx.fillStyle = goldColor;
-      ctx.shadowBlur = 12 * z;
-      ctx.shadowColor = "rgba(255,220,50,0.9)";
-      ctx.fillRect(-14 * z, -10 * z, 28 * z, 20 * z);
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = "rgba(180,130,0,1)";
-      ctx.lineWidth = 2 * z;
-      ctx.strokeRect(-14 * z, -10 * z, 28 * z, 20 * z);
-      // 금괴 줄
-      ctx.strokeStyle = "rgba(255,245,120,0.5)";
-      ctx.lineWidth = 1.5 * z;
-      for (let gi = 1; gi < 3; gi++) {
-        ctx.beginPath();
-        ctx.moveTo(-14*z, -10*z + gi * 7*z);
-        ctx.lineTo(14*z, -10*z + gi * 7*z);
-        ctx.stroke();
-      }
-      // 이동 방향 화살표
-      ctx.fillStyle = "rgba(255,255,255,0.9)";
+
+      const W = 88 * z;
+      const H = 52 * z;
+
+      // L0: 바닥 그림자
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.75)"; ctx.shadowBlur = 16 * z;
+      ctx.shadowOffsetX = 3 * z; ctx.shadowOffsetY = 5 * z;
+      ctx.fillStyle = armorDark;
       ctx.beginPath();
-      ctx.moveTo(38*z, 0);
-      ctx.lineTo(28*z, -8*z);
-      ctx.lineTo(28*z, 8*z);
-      ctx.closePath();
-      ctx.fill();
+      ctx.moveTo( W*0.5,  H*0.35); ctx.lineTo( W*0.5, -H*0.35);
+      ctx.lineTo(-W*0.5, -H*0.5);  ctx.lineTo(-W*0.5,  H*0.5);
+      ctx.closePath(); ctx.fill();
       ctx.restore();
 
-      // 팀 테두리 링 (얇은 흰색)
-      ctx.strokeStyle = "rgba(255,255,255,0.6)";
-      ctx.lineWidth = 2 * z;
+      // L1: 바퀴 4개 (차체 측면 돌출)
+      const wW = 16 * z, wH = 9 * z;
+      const wOX = 22 * z, wOY = H * 0.5 + 3 * z;
+      function drawWheel(wx, wy) {
+        ctx.save(); ctx.translate(wx, wy);
+        ctx.fillStyle = rubber;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(-wW/2, -wH/2, wW, wH, 2.5 * z);
+        else ctx.rect(-wW/2, -wH/2, wW, wH);
+        ctx.fill();
+        ctx.save(); ctx.rotate(convoyWheelAngle);
+        ctx.strokeStyle = "#333"; ctx.lineWidth = 1.5 * z;
+        const wr = wH * 0.32;
+        ctx.beginPath();
+        ctx.moveTo(-wr, 0); ctx.lineTo(wr, 0);
+        ctx.moveTo(0, -wr); ctx.lineTo(0, wr);
+        ctx.stroke();
+        ctx.restore();
+        ctx.strokeStyle = "#3a3a3a"; ctx.lineWidth = 1 * z;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(-wW/2, -wH/2, wW, wH, 2.5 * z);
+        else ctx.rect(-wW/2, -wH/2, wW, wH);
+        ctx.stroke();
+        ctx.restore();
+      }
+      drawWheel( wOX,  wOY); drawWheel( wOX, -wOY);
+      drawWheel(-wOX,  wOY); drawWheel(-wOX, -wOY);
+
+      // L2: 차체 메인 바디 (앞=좁은 사다리꼴, MRAP 실루엣)
+      const bodyGrad = ctx.createLinearGradient(-W*0.5, -H*0.5, W*0.5, H*0.5);
+      bodyGrad.addColorStop(0,   armorMid);
+      bodyGrad.addColorStop(0.3, armorLight);
+      bodyGrad.addColorStop(0.7, armorMid);
+      bodyGrad.addColorStop(1,   armorDark);
+      ctx.fillStyle = convoy.hitFlash > 0 ? "rgba(255,255,255,0.85)" : bodyGrad;
       ctx.beginPath();
-      ctx.arc(sx, sy, 38 * z, 0, Math.PI * 2);
+      ctx.moveTo( W*0.5,  H*0.35); ctx.lineTo( W*0.5, -H*0.35);
+      ctx.lineTo(-W*0.5, -H*0.5);  ctx.lineTo(-W*0.5,  H*0.5);
+      ctx.closePath(); ctx.fill();
+
+      // L3: 장갑판 패널 분할선
+      ctx.strokeStyle = "rgba(0,0,0,0.55)"; ctx.lineWidth = 1.2 * z;
+      ctx.beginPath();
+      ctx.moveTo(-W*0.5, 0); ctx.lineTo(W*0.5, 0);      // 수평 중앙선
+      ctx.moveTo(-W*0.15, -H*0.48); ctx.lineTo(-W*0.15, H*0.48); // 수직 후방
+      ctx.moveTo( W*0.18, -H*0.33); ctx.lineTo( W*0.18, H*0.33); // 수직 전방
       ctx.stroke();
 
-      // HP 바 (위쪽)
-      const hpR = convoy.hp / convoy.maxHp;
-      const bw = 88 * z, bh = 8 * z;
-      const bx = sx - bw/2, by = sy - 56 * z;
-      ctx.fillStyle = "rgba(0,0,0,0.75)";
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.fillStyle = hpR > 0.5 ? "#44dd44" : hpR > 0.25 ? "#ffaa00" : "#ff3333";
-      ctx.fillRect(bx, by, bw * hpR, bh);
-      ctx.strokeStyle = "rgba(255,255,255,0.4)";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(bx, by, bw, bh);
+      // L4: 팀 컬러 사이드 스트라이프
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = teamLight;
+      ctx.fillRect(-W*0.5, -H*0.5,   W, H*0.07);
+      ctx.fillRect(-W*0.5,  H*0.43,  W, H*0.07);
+      ctx.globalAlpha = 1.0;
 
-      // CONVOY 레이블
-      ctx.fillStyle = goldColor;
-      ctx.font = `bold ${Math.round(13 * z)}px monospace`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      ctx.shadowBlur = 8;
-      ctx.shadowColor = "rgba(255,200,50,0.8)";
-      ctx.fillText("CONVOY", sx, by - 3 * z);
-      ctx.shadowBlur = 0;
+      // L5: 앞 V형 범퍼 쐐기 (장갑 쐐기)
+      ctx.fillStyle = armorDark;
+      ctx.beginPath();
+      ctx.moveTo(W*0.5,  H*0.35); ctx.lineTo(W*0.5, -H*0.35); ctx.lineTo(W*0.38, 0);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = goldC; ctx.lineWidth = 1.5 * z;
+      ctx.beginPath();
+      ctx.moveTo(W*0.5,  H*0.33); ctx.lineTo(W*0.38, 0); ctx.lineTo(W*0.5, -H*0.33);
+      ctx.stroke();
 
-      // 경로 진행률
-      if (convoy.waypoints && convoy.waypointIdx >= 0) {
-        const prog = Math.min(1, convoy.waypointIdx / Math.max(1, convoy.waypoints.length - 1));
-        ctx.fillStyle = "rgba(255,255,200,0.85)";
-        ctx.font = `bold ${Math.round(10 * z)}px monospace`;
-        ctx.fillText(`ROUTE ${Math.round(prog * 100)}%`, sx, by - 18 * z);
+      // L6: 루프 해치 (중앙 사각형)
+      const hW = 22 * z, hH = 16 * z;
+      ctx.fillStyle = "#1a1a1a"; ctx.strokeStyle = goldC; ctx.lineWidth = 1.2 * z;
+      ctx.fillRect(-hW/2, -hH/2, hW, hH); ctx.strokeRect(-hW/2, -hH/2, hW, hH);
+      ctx.fillStyle = armorLight;
+      ctx.beginPath();
+      ctx.arc(-hW/2 + 3*z, -hH/4, 1.5*z, 0, Math.PI*2);
+      ctx.arc(-hW/2 + 3*z,  hH/4, 1.5*z, 0, Math.PI*2);
+      ctx.fill();
+
+      // L7: 후방 안테나 LED (깜빡임)
+      ctx.strokeStyle = "#888"; ctx.lineWidth = 1.2 * z;
+      ctx.beginPath();
+      ctx.moveTo(-W*0.38, -H*0.28); ctx.lineTo(-W*0.44, -H*0.45);
+      ctx.stroke();
+      ctx.fillStyle = "#ff3333"; ctx.globalAlpha = pulse;
+      ctx.beginPath(); ctx.arc(-W*0.44, -H*0.45, 1.8*z, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1.0;
+
+      // L8: 후방 환기 슬롯
+      ctx.fillStyle = "#080808";
+      for (let vi = 0; vi < 3; vi++)
+        ctx.fillRect(-W*0.43 + vi*4*z, H*0.1, 2.5*z, H*0.28);
+
+      // L9: 헤드라이트 (앞, 흰색 발광)
+      function drawHeadlight(hy) {
+        ctx.save();
+        ctx.shadowColor = "rgba(255,255,220,0.9)"; ctx.shadowBlur = 12 * z;
+        ctx.fillStyle = "rgba(255,255,210,0.95)";
+        ctx.beginPath(); ctx.ellipse(W*0.47, hy, 4*z, 2.5*z, 0, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = "rgba(255,255,220,0.12)";
+        ctx.beginPath();
+        ctx.moveTo(W*0.48, hy-2*z); ctx.lineTo(W*0.66, hy-9*z);
+        ctx.lineTo(W*0.66, hy+9*z); ctx.lineTo(W*0.48, hy+2*z);
+        ctx.closePath(); ctx.fill();
+      }
+      drawHeadlight( H*0.23); drawHeadlight(-H*0.23);
+
+      // L10: 테일라이트 (뒤, 빨간색)
+      function drawTaillight(ty) {
+        ctx.save();
+        ctx.shadowColor = "rgba(255,40,40,0.85)"; ctx.shadowBlur = 8 * z;
+        ctx.fillStyle = "rgba(220,30,30,0.9)";
+        ctx.beginPath(); ctx.ellipse(-W*0.48, ty, 5*z, 2.5*z, 0, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+      drawTaillight( H*0.38); drawTaillight(-H*0.38);
+
+      // L11: 골드 테두리 + 코너 볼트
+      ctx.strokeStyle = goldC; ctx.lineWidth = 1.5 * z;
+      ctx.beginPath();
+      ctx.moveTo( W*0.5,  H*0.35); ctx.lineTo( W*0.5, -H*0.35);
+      ctx.lineTo(-W*0.5, -H*0.5);  ctx.lineTo(-W*0.5,  H*0.5);
+      ctx.closePath(); ctx.stroke();
+      for (const [bx2, by2] of [[ W*0.42, H*0.28],[ W*0.42,-H*0.28],[-W*0.42, H*0.42],[-W*0.42,-H*0.42]]) {
+        ctx.fillStyle = "#555"; ctx.beginPath(); ctx.arc(bx2, by2, 2.5*z, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = goldC; ctx.lineWidth = 0.8*z; ctx.stroke();
       }
 
+      // L12: 팀 발광 외곽 글로우
+      ctx.save();
+      ctx.shadowColor = teamGlow; ctx.shadowBlur = 18 * z * pulse;
+      ctx.strokeStyle = teamLight; ctx.lineWidth = 2.5 * z; ctx.globalAlpha = 0.5 * pulse;
+      ctx.beginPath();
+      ctx.moveTo( W*0.5,  H*0.35); ctx.lineTo( W*0.5, -H*0.35);
+      ctx.lineTo(-W*0.5, -H*0.5);  ctx.lineTo(-W*0.5,  H*0.5);
+      ctx.closePath(); ctx.stroke();
+      ctx.globalAlpha = 1.0;
       ctx.restore();
-      ctx.restore();
+
+      // L13: hitFlash 오버레이
+      if (convoy.hitFlash > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${Math.min(0.7, convoy.hitFlash * 4)})`;
+        ctx.beginPath();
+        ctx.moveTo( W*0.5,  H*0.35); ctx.lineTo( W*0.5, -H*0.35);
+        ctx.lineTo(-W*0.5, -H*0.5);  ctx.lineTo(-W*0.5,  H*0.5);
+        ctx.closePath(); ctx.fill();
+      }
+
+      ctx.restore(); // rotate/translate 해제
+
+      // ── HP 바 + 레이블 (회전 없이 항상 수평) ──────────────
+      const hpR = convoy.hp / convoy.maxHp;
+      const bw = 96 * z, bh = 8 * z;
+      const bx = sx - bw/2, by = sy - 60 * z;
+      ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+      ctx.fillStyle = hpR > 0.5 ? "#44dd44" : hpR > 0.25 ? "#ffaa00" : "#ff3333";
+      ctx.fillRect(bx, by, bw * hpR, bh);
+      ctx.strokeStyle = goldC; ctx.lineWidth = 1 * z; ctx.strokeRect(bx, by, bw, bh);
+      ctx.fillStyle = goldBright;
+      ctx.font = `bold ${Math.round(11 * z)}px monospace`;
+      ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      ctx.shadowBlur = 8; ctx.shadowColor = "rgba(255,200,50,0.8)";
+      ctx.fillText("CONVOY", sx, by - 2 * z);
+      ctx.shadowBlur = 0;
+      if (convoy.waypoints && convoy.waypointIdx >= 0) {
+        const prog = Math.min(1, convoy.waypointIdx / Math.max(1, convoy.waypoints.length - 1));
+        ctx.fillStyle = "rgba(255,255,200,0.8)";
+        ctx.font = `${Math.round(9 * z)}px monospace`;
+        ctx.fillText(`ROUTE ${Math.round(prog * 100)}%`, sx, by - 14 * z);
+      }
+
+      ctx.restore(); // setTransform 복구
     }
 
     function drawCinematic() {

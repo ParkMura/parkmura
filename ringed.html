@@ -9525,23 +9525,14 @@
 
     function startVaultCinematic(vault, destroyerTeam) {
       isCinematic = true;
-      // 방호복 파편 생성
-      const pieces = [];
-      for (let i = 0; i < 20; i++) {
-        const ang = Math.random() * Math.PI * 2;
-        const rad = 20 + Math.random() * 80;
-        pieces.push({
-          x: vault.x + vault.w/2 + Math.cos(ang)*rad,
-          y: vault.y + vault.h/2 + Math.sin(ang)*rad,
-          tx: 0, ty: 0,
-          rot: Math.random() * Math.PI * 2,
-          rotSpd: (Math.random() - 0.5) * 10,
-          size: 6 + Math.random() * 12,
-          color: Math.random() > 0.5 ? "#FFD700" : "#FFA500",
-          life: 0, maxLife: 2.5
-        });
-      }
-      // destroyer 위치 찾기
+      letterboxT = 0;
+      goldBars = [];
+      armorPieceAnims = [];
+      convoyMaterializeT = 0;
+      cargoLoadProgress = 0;
+      screenWhiteFlash = 0;
+
+      // 파괴자 위치
       let dX = vault.x + vault.w/2, dY = vault.y + vault.h/2;
       if (destroyerTeam === playerTeam && player.hp > 0) {
         dX = player.x; dY = player.y;
@@ -9550,33 +9541,79 @@
           if (ai.alive && ai.team === destroyerTeam) { dX = ai.x; dY = ai.y; break; }
         }
       }
-      pieces.forEach(p => { p.tx = dX; p.ty = dY; });
 
-      // convoy 웨이포인트 계산 (적 금고 → 아군 리스폰 플랫폼)
-      const destPlatform = spawnPlatforms.find(p => p.team === destroyerTeam);
       const vX = vault.x + vault.w/2, vY = vault.y + vault.h/2;
+      const destPlatform = spawnPlatforms.find(p => p.team === destroyerTeam);
       const waypoints = destroyerTeam === 0
         ? [{x:vX,y:vY},{x:2200,y:1200},{x:1100,y:1200},{x:(destPlatform?destPlatform.x:300),y:(destPlatform?destPlatform.y:1200)}]
         : [{x:vX,y:vY},{x:1100,y:1200},{x:2200,y:1200},{x:(destPlatform?destPlatform.x:3000),y:(destPlatform?destPlatform.y:1200)}];
 
+      // 시네마틱 카메라 초기화: 현재 플레이어 위치에서 시작
+      cinematicCamera = {
+        active: true,
+        x: player.x, y: player.y,
+        targetX: vX, targetY: vY,
+        lerpSpeed: 3.5,
+        zoom: 0.85
+      };
+
+      // 금괴 비산 파티클
+      for (let i = 0; i < 6; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        goldBars.push({
+          x: vX, y: vY,
+          vx: (Math.random()-0.5)*180, vy: -180 - Math.random()*120,
+          gravity: 150, rot: 0, rotSpd: (Math.random()-0.5)*600,
+          w: 20, h: 10, life: 2.5, maxLife: 2.5
+        });
+      }
+
+      // 방호복 피스 정의
+      const armorPartsData = [
+        {delay:0.0, dst:{x:-12,y:28}},{delay:0.2,dst:{x:12,y:28}},
+        {delay:0.5, dst:{x:-12,y:38}},{delay:0.7,dst:{x:12,y:38}},
+        {delay:1.0, dst:{x:0,y:10}},{delay:1.3,dst:{x:0,y:22}},
+        {delay:1.6, dst:{x:-18,y:8}},{delay:1.9,dst:{x:18,y:8}},
+        {delay:2.2, dst:{x:-22,y:0}},{delay:2.5,dst:{x:22,y:0}},
+        {delay:2.8, dst:{x:0,y:-6}},{delay:3.1,dst:{x:0,y:-18}},
+      ];
+      const charId = (destroyerTeam === playerTeam) ? (playerChar ? playerChar.id : 0) : 1;
+      const armorColMap = ["#FFD700","#FF8C00","#00DD44","#FF69B4"];
+      const armorCol = armorColMap[charId] || "#FFD700";
+
+      for (const pd of armorPartsData) {
+        armorPieceAnims.push({
+          sx: vX + (Math.random()-0.5)*60,
+          sy: vY + (Math.random()-0.5)*60,
+          tx: dX + pd.dst.x, ty: dY + pd.dst.y,
+          delay: pd.delay,
+          color: armorCol,
+          rot: Math.random() * Math.PI * 2,
+          rotSpd: (Math.random()-0.5)*15,
+          progress: 0,
+          size: 8, landed: false
+        });
+      }
+
       cinematicState = {
         phase: "vault_explode",
-        timer: 0, totalTimer: 0, maxDuration: 20,
+        timer: 0, totalTimer: 0, maxDuration: 30,
         vault, destroyerTeam,
         destroyerX: dX, destroyerY: dY,
-        armorPieces: pieces,
         armorEquipped: false,
         convoySpawned: false,
         goldLoadProgress: 0,
         waypoints, vX, vY,
-        explodeRing: 0
+        armorCol,
+        countdownShown: 0,
+        resumeCountdown: 0,
+        routePathProgress: 0,
       };
 
-      // 폭발 이펙트
-      burst(vault.x + vault.w/2, vault.y + vault.h/2, "#FFD700", 35);
-      addShockRing(vault.x + vault.w/2, vault.y + vault.h/2, "#FF8800", 400, 0.9, 6);
-      screenKillFlash = 0.7;
-      playTone(440, 0.6, 0.5);
+      burst(vX, vY, "#FFD700", 20);
+      addShockRing(vX, vY, "#FF8800", 300, 0.8, 5);
+      screenKillFlash = 0.5;
+      playTone(440, 0.5, 0.4);
     }
 
     function updateCinematic(dt) {
@@ -9584,58 +9621,112 @@
       const c = cinematicState;
       c.timer += dt;
       c.totalTimer += dt;
+      const tt = c.totalTimer;
 
-      // 방호복 파편 이동
-      for (const p of c.armorPieces) {
-        p.x += (p.tx - p.x) * 0.08;
-        p.y += (p.ty - p.y) * 0.08;
-        p.rot += p.rotSpd * dt;
-        p.life += dt;
+      // 레터박스
+      if (tt < 0.8) letterboxT = tt / 0.8;
+      else if (tt > 27) letterboxT = Math.max(0, 1 - (tt - 27));
+      else letterboxT = 1;
+
+      // 금괴 물리
+      for (let i = goldBars.length - 1; i >= 0; i--) {
+        const gb = goldBars[i];
+        gb.x += gb.vx * dt; gb.y += gb.vy * dt;
+        gb.vy += gb.gravity * dt;
+        gb.rot += gb.rotSpd * dt;
+        gb.life -= dt;
+        if (gb.life <= 0) goldBars.splice(i, 1);
       }
 
+      // 방호복 피스 애니메이션
+      for (const ap of armorPieceAnims) {
+        const elapsed = tt - (c.totalTimer > 7.5 ? 7.5 : 999) - ap.delay;
+        if (elapsed > 0 && !ap.landed) {
+          ap.progress = Math.min(1, elapsed / 0.6);
+          ap.rot += ap.rotSpd * dt;
+          if (ap.progress >= 1 && !ap.landed) {
+            ap.landed = true;
+            addShockRing(ap.tx, ap.ty, c.armorCol, 20, 0.6, 2);
+          }
+        }
+      }
+
+      // === 카메라 타겟 전환 ===
+      if (tt < 2) {
+        cinematicCamera.targetX = c.vX;
+        cinematicCamera.targetY = c.vY;
+        cinematicCamera.lerpSpeed = 3.5;
+      } else if (tt >= 5.5 && tt < 8) {
+        cinematicCamera.targetX = c.destroyerX;
+        cinematicCamera.targetY = c.destroyerY;
+        cinematicCamera.lerpSpeed = 2.5;
+      } else if (tt >= 13.5 && tt < 16) {
+        cinematicCamera.targetX = c.vX + (c.destroyerTeam === 0 ? 200 : -200);
+        cinematicCamera.targetY = c.vY;
+        cinematicCamera.lerpSpeed = 2.0;
+      } else if (tt >= 20.5 && tt < 24) {
+        cinematicCamera.targetX = player.x;
+        cinematicCamera.targetY = player.y;
+        cinematicCamera.lerpSpeed = 1.8;
+      }
+
+      // === 페이즈 전환 ===
       if (c.phase === "vault_explode") {
-        c.explodeRing = Math.min(1, c.explodeRing + dt / 1.5); // 1.5초에 0→1
-      }
-      if (c.phase === "vault_explode" && c.timer >= 1.5) {
-        c.phase = "armor_equip"; c.timer = 0;
-      } else if (c.phase === "armor_equip" && c.timer >= 2.0) {
-        // 방호복 장착
-        if (!c.armorEquipped) {
+        if (tt >= 3.0 && tt < 3.1) { burst(c.vX+(Math.random()-0.5)*40, c.vY+(Math.random()-0.5)*50, "#FF8800", 15); shake = 3; }
+        if (tt >= 3.3 && tt < 3.4) { burst(c.vX+(Math.random()-0.5)*40, c.vY+(Math.random()-0.5)*50, "#FF4400", 15); shake = 4; }
+        if (tt >= 3.6 && tt < 3.7) { burst(c.vX+(Math.random()-0.5)*40, c.vY+(Math.random()-0.5)*50, "#FF6600", 15); shake = 5; }
+        if (tt >= 4.0 && tt < 4.1) {
+          burst(c.vX, c.vY + 20, "#FFD700", 50);
+          addShockRing(c.vX, c.vY, "#FF8800", 400, 0.9, 6);
+          addShockRing(c.vX, c.vY, "#FFD700", 300, 0.7, 4);
+          addShockRing(c.vX, c.vY, "#FF4400", 200, 0.8, 3);
+          shake = 10;
+          screenWhiteFlash = 0.7;
+          screenDmgFlash = 0.4;
+        }
+        if (c.timer >= 5.5) { c.phase = "armor_equip"; c.timer = 0; }
+      } else if (c.phase === "armor_equip") {
+        if (c.timer >= 5.5 && !c.armorEquipped) {
           c.armorEquipped = true;
           if (c.destroyerTeam === playerTeam) {
-            playerArmorSuit = true;
-            armorSuitCharId = 0;
+            playerArmorSuit = true; armorSuitCharId = 0;
           } else {
             for (const ai of aiPlayers) {
               if (ai.alive && ai.team === c.destroyerTeam) { ai.armorSuit = true; break; }
             }
           }
-          playTone(660, 0.5, 0.4);
+          screenKillFlash = 0.85;
+          addShockRing(c.destroyerX, c.destroyerY, c.armorCol, 40, 0.9, 3);
+          addShockRing(c.destroyerX, c.destroyerY, "#FFFFFF", 25, 0.7, 2);
+          playTone(660, 0.5, 0.5);
         }
-        c.phase = "convoy_appear"; c.timer = 0;
-      } else if (c.phase === "convoy_appear" && c.timer >= 2.0) {
-        if (!c.convoySpawned) {
+        if (c.timer >= 8) { c.phase = "convoy_appear"; c.timer = 0; }
+      } else if (c.phase === "convoy_appear") {
+        convoyMaterializeT = Math.min(1, c.timer / 1.5);
+        if (c.timer >= 2.0 && !c.convoySpawned) {
           c.convoySpawned = true;
           convoy = {
             x: c.vX, y: c.vY, team: c.destroyerTeam,
             hp: 3000, maxHp: 3000, angle: 0,
-            w: 80, h: 50, alive: true,
+            w: 120, h: 70, alive: true,
             waypoints: c.waypoints, waypointIdx: 0,
             goldLoaded: false, reachedBase: false,
-            hitFlash: 0, invuln: 2.0
+            hitFlash: 0, invuln: 3.0
           };
+          addShockRing(c.vX, c.vY, convoy.team === 0 ? "#4488FF" : "#FF4444", 100, 0.8, 3);
         }
-        c.phase = "convoy_load"; c.timer = 0;
-      } else if (c.phase === "convoy_load") {
-        c.goldLoadProgress = Math.min(1, c.timer / 4.0);
-        if (c.timer >= 4.0) {
-          c.phase = "done"; c.timer = 0;
+        if (c.timer >= 3.0) {
+          cargoLoadProgress = Math.min(1, (c.timer - 3.0) / 2.5);
         }
+        if (c.timer >= 7) { c.phase = "done"; c.timer = 0; }
       } else if (c.phase === "done" || c.totalTimer >= c.maxDuration) {
         if (convoy) convoy.goldLoaded = true;
         cinematicState = null;
         isCinematic = false;
-        // AI convoy 에스코트 플래그 설정
+        cinematicCamera.active = false;
+        letterboxT = 0;
+        screenKillFlash = 0.6;
+        playTone(880, 0.4, 0.3);
         for (const ai of aiPlayers) {
           ai.isConvoyEscort = (convoy && ai.team === convoy.team);
         }
@@ -10639,253 +10730,796 @@
     function drawVaultsWorld() {
       if (gameMode !== "teambattle") return;
       const t = Date.now() * 0.001;
+      const z = camera.zoom;
+
+      // 금고 파티클 업데이트
+      for (let i = vaultParticles.length - 1; i >= 0; i--) {
+        const p = vaultParticles[i];
+        p.x += p.vx * 0.016; p.y += p.vy * 0.016;
+        p.life -= 0.016;
+        if (p.life <= 0) { vaultParticles.splice(i, 1); }
+      }
+      // 파티클 스폰 (파괴 안 된 금고 주변)
       for (const vault of facilities) {
+        if (!vault.isVault || vault.destroyed) continue;
+        if (Math.random() < 0.18) {
+          const cx2 = vault.x + vault.w / 2, cy2 = vault.y + vault.h / 2;
+          const ang = Math.random() * Math.PI * 2;
+          const rad = vault.w * 0.5 + Math.random() * 30;
+          vaultParticles.push({
+            x: cx2 + Math.cos(ang) * rad, y: cy2 + Math.sin(ang) * rad,
+            vx: (Math.random() - 0.5) * 50, vy: -80 - Math.random() * 60,
+            life: 1.5 + Math.random() * 1.5, maxLife: 3.0,
+            size: 1.5 + Math.random() * 2.5
+          });
+        }
+      }
+
+      for (const vault of facilities) {
+        if (!vault.isVault) continue;
+        const vw = 120, vh = 200; // 더 큰 금고
         const sx = screenX(vault.x), sy = screenY(vault.y);
-        const sw = vault.w * camera.zoom, sh = vault.h * camera.zoom;
-        if (sx + sw < -100 || sx - sw > width + 100) continue;
+        const sw = vw * z, sh = vh * z;
+        if (sx + sw < -120 || sx - sw > width + 120) continue;
+        const cx2 = sx + sw / 2, cy2 = sy + sh / 2;
         ctx.save();
+
         if (vault.destroyed) {
-          // 파괴된 금고
-          ctx.fillStyle = "#111";
+          ctx.fillStyle = "#1a0800";
           ctx.fillRect(sx, sy, sw, sh);
           ctx.fillStyle = "#ff3300";
-          ctx.font = `bold ${Math.round(10 * camera.zoom)}px monospace`;
+          ctx.font = `bold ${Math.round(11 * z)}px monospace`;
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText("DESTROYED", sx + sw/2, sy + sh/2);
-        } else {
-          const pulse = 0.5 + 0.5 * Math.sin(t * 3.5 + vault.glowPhase);
-          // 황금 글로우 외부
-          ctx.shadowColor = "#FFD700";
-          ctx.shadowBlur = (14 + 8 * pulse) * camera.zoom;
-          ctx.fillStyle = "#1a1000";
-          ctx.fillRect(sx, sy, sw, sh);
-          // 황금 테두리
-          ctx.shadowBlur = 0;
-          ctx.strokeStyle = `rgba(255,${180 + Math.round(75 * pulse)},0,${0.7 + 0.3 * pulse})`;
-          ctx.lineWidth = (2 + 2 * pulse) * camera.zoom;
-          ctx.strokeRect(sx + 2, sy + 2, sw - 4, sh - 4);
-          // 금고 내부 디테일 (세 줄 금속 스트라이프)
-          for (let i = 1; i <= 3; i++) {
-            ctx.fillStyle = `rgba(80,50,0,0.6)`;
-            ctx.fillRect(sx + 6 * camera.zoom, sy + (sh * i / 4) - camera.zoom, sw - 12 * camera.zoom, 2 * camera.zoom);
+          ctx.fillText("DESTROYED", cx2, cy2);
+          ctx.restore();
+          continue;
+        }
+
+        const pulse = 0.5 + 0.5 * Math.sin(t * 3.5 + (vault.glowPhase || 0));
+
+        // L0: 경고 구역 바닥 (사선 스트라이프)
+        ctx.save();
+        const wzw = sw + 80 * z, wzh = sh + 80 * z;
+        const wzx = sx - 40 * z, wzy = sy - 40 * z;
+        ctx.beginPath(); ctx.rect(wzx, wzy, wzw, wzh); ctx.clip();
+        ctx.globalAlpha = 0.15;
+        const stripeW = 18 * z;
+        const scrollOff = (t * 20 * z) % (stripeW * 2);
+        for (let xi = wzx - stripeW * 2 - scrollOff; xi < wzx + wzw + stripeW * 2; xi += stripeW * 2) {
+          ctx.fillStyle = "rgba(255,180,0,0.55)";
+          ctx.beginPath();
+          ctx.moveTo(xi, wzy); ctx.lineTo(xi + stripeW, wzy);
+          ctx.lineTo(xi + stripeW + wzh, wzy + wzh); ctx.lineTo(xi + wzh, wzy + wzh);
+          ctx.closePath(); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = `rgba(255,180,0,${0.35 + pulse * 0.15})`;
+        ctx.lineWidth = 3 * z;
+        ctx.strokeRect(wzx, wzy, wzw, wzh);
+        ctx.restore();
+
+        // L1: 금속 본체
+        ctx.shadowBlur = (20 + 10 * pulse) * z;
+        ctx.shadowColor = `rgba(255,180,0,${0.45 + pulse * 0.25})`;
+        const bodyGrad = ctx.createLinearGradient(sx, cy2, sx + sw, cy2);
+        bodyGrad.addColorStop(0, "rgba(45,42,38,1)");
+        bodyGrad.addColorStop(0.3, "rgba(75,70,63,1)");
+        bodyGrad.addColorStop(0.7, "rgba(55,52,47,1)");
+        bodyGrad.addColorStop(1, "rgba(35,33,30,1)");
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        const br = 8 * z;
+        ctx.moveTo(sx + br, sy); ctx.lineTo(sx + sw - br, sy);
+        ctx.arcTo(sx + sw, sy, sx + sw, sy + br, br);
+        ctx.lineTo(sx + sw, sy + sh - br);
+        ctx.arcTo(sx + sw, sy + sh, sx + sw - br, sy + sh, br);
+        ctx.lineTo(sx + br, sy + sh);
+        ctx.arcTo(sx, sy + sh, sx, sy + sh - br, br);
+        ctx.lineTo(sx, sy + br);
+        ctx.arcTo(sx, sy, sx + br, sy, br);
+        ctx.closePath(); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = "rgba(110,100,85,1)"; ctx.lineWidth = 3 * z;
+        ctx.stroke();
+
+        // L2: 수평 강철 바 5개
+        const barYs = [25, 55, 90, 130, 165];
+        for (const byOff of barYs) {
+          const bx = sx + 8 * z, barY2 = sy + byOff * z;
+          const bw2 = sw - 16 * z, bh2 = 12 * z;
+          const barGrad = ctx.createLinearGradient(bx, barY2, bx, barY2 + bh2);
+          barGrad.addColorStop(0, "rgba(90,85,78,1)");
+          barGrad.addColorStop(0.5, "rgba(40,38,35,1)");
+          barGrad.addColorStop(1, "rgba(70,65,60,1)");
+          ctx.fillStyle = barGrad;
+          ctx.fillRect(bx, barY2, bw2, bh2);
+          ctx.strokeStyle = "rgba(30,28,26,1)"; ctx.lineWidth = 1;
+          ctx.strokeRect(bx, barY2, bw2, bh2);
+          // 볼트
+          for (let vi = 0; vi < 2; vi++) {
+            const bvx = sx + (vi === 0 ? 14 : sw - 14) * z;
+            ctx.fillStyle = "rgba(120,110,95,1)";
+            ctx.beginPath(); ctx.arc(bvx, barY2 + bh2/2, 3*z, 0, Math.PI*2); ctx.fill();
           }
-          // TARGET 텍스트
-          const colHex = vault.team === 0 ? "#88aaff" : "#ff8888";
-          ctx.fillStyle = colHex;
-          ctx.font = `bold ${Math.round(11 * camera.zoom)}px monospace`;
-          ctx.textAlign = "center"; ctx.textBaseline = "top";
-          ctx.shadowColor = colHex; ctx.shadowBlur = 6;
-          ctx.fillText("TARGET", sx + sw/2, sy + 4 * camera.zoom);
+        }
+
+        // L3: 중앙 다이얼
+        const dialX = cx2, dialY = sy + 60 * z, dialR = 28 * z;
+        ctx.strokeStyle = "rgba(150,120,50,1)"; ctx.lineWidth = 3 * z;
+        ctx.beginPath(); ctx.arc(dialX, dialY, dialR, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = "rgba(40,38,35,1)";
+        ctx.beginPath(); ctx.arc(dialX, dialY, dialR - 3*z, 0, Math.PI * 2); ctx.fill();
+        // 눈금
+        for (let ni = 0; ni < 12; ni++) {
+          const na = (ni / 12) * Math.PI * 2;
+          const isLong = ni % 3 === 0;
+          const nr1 = dialR - 3*z - (isLong ? 8 : 4) * z;
+          const nr2 = dialR - 3*z;
+          ctx.strokeStyle = "rgba(200,170,80,1)"; ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(dialX + Math.cos(na)*nr1, dialY + Math.sin(na)*nr1);
+          ctx.lineTo(dialX + Math.cos(na)*nr2, dialY + Math.sin(na)*nr2);
+          ctx.stroke();
+        }
+        // 바늘
+        const needleA = t * 0.5;
+        ctx.strokeStyle = "rgba(255,60,60,1)"; ctx.lineWidth = 2 * z;
+        ctx.shadowBlur = 6; ctx.shadowColor = "rgba(255,0,0,0.7)";
+        ctx.beginPath();
+        ctx.moveTo(dialX, dialY);
+        ctx.lineTo(dialX + Math.cos(needleA) * (dialR - 8*z), dialY + Math.sin(needleA) * (dialR - 8*z));
+        ctx.stroke(); ctx.shadowBlur = 0;
+        ctx.fillStyle = "rgba(255,200,50,1)";
+        ctx.beginPath(); ctx.arc(dialX, dialY, 3*z, 0, Math.PI*2); ctx.fill();
+
+        // L4: 금괴 3개 (강철 바 사이 공간)
+        const goldGapYs = [42, 115, 150];
+        for (const gy of goldGapYs) {
+          const gx = sx + sw/2 - 15*z, gyAbs = sy + gy*z;
+          const goldGrad = ctx.createLinearGradient(gx, gyAbs, gx, gyAbs + 14*z);
+          goldGrad.addColorStop(0, "rgba(255,220,80,1)");
+          goldGrad.addColorStop(0.5, "rgba(200,150,30,1)");
+          goldGrad.addColorStop(1, "rgba(255,200,50,1)");
+          ctx.fillStyle = goldGrad;
+          ctx.shadowBlur = 10*z; ctx.shadowColor = "rgba(255,200,50,0.85)";
+          ctx.beginPath();
+          const gr = 3*z;
+          const gw2 = 30*z, gh2 = 14*z;
+          ctx.moveTo(gx+gr,gyAbs); ctx.lineTo(gx+gw2-gr,gyAbs);
+          ctx.arcTo(gx+gw2,gyAbs,gx+gw2,gyAbs+gr,gr);
+          ctx.lineTo(gx+gw2,gyAbs+gh2-gr);
+          ctx.arcTo(gx+gw2,gyAbs+gh2,gx+gw2-gr,gyAbs+gh2,gr);
+          ctx.lineTo(gx+gr,gyAbs+gh2);
+          ctx.arcTo(gx,gyAbs+gh2,gx,gyAbs+gh2-gr,gr);
+          ctx.lineTo(gx,gyAbs+gr);
+          ctx.arcTo(gx,gyAbs,gx+gr,gyAbs,gr);
+          ctx.closePath(); ctx.fill();
           ctx.shadowBlur = 0;
-          // HP 바
-          const hpRatio = vault.hp / vault.maxHp;
-          const barW = sw - 4, barH = 6 * camera.zoom;
-          const barX = sx + 2, barY = sy + sh + 4 * camera.zoom;
-          ctx.fillStyle = "#222"; ctx.fillRect(barX, barY, barW, barH);
-          const barCol = hpRatio > 0.5 ? "#FFD700" : hpRatio > 0.2 ? "#FF6600" : "#FF0000";
-          ctx.fillStyle = barCol; ctx.fillRect(barX, barY, barW * hpRatio, barH);
-          ctx.strokeStyle = "#555"; ctx.lineWidth = 1;
-          ctx.strokeRect(barX, barY, barW, barH);
+          ctx.strokeStyle = "rgba(140,100,20,1)"; ctx.lineWidth = 1.5;
+          ctx.stroke();
+          // 하이라이트
+          ctx.fillStyle = "rgba(255,240,160,0.4)";
+          ctx.fillRect(gx+3*z, gyAbs+2*z, 10*z, 4*z);
+        }
+
+        // L5: 경고 라이트 2개
+        const lightBlink = Math.floor(t * 2) % 2 === 0;
+        for (const lxi of [sx + 14*z, sx + sw - 14*z]) {
+          const lyi = sy + 14*z;
+          if (lightBlink) {
+            ctx.fillStyle = "rgba(255,60,60,1)";
+            ctx.shadowBlur = 18*z; ctx.shadowColor = "rgba(255,80,0,0.8)";
+          } else {
+            ctx.fillStyle = "rgba(60,20,20,1)";
+            ctx.shadowBlur = 0;
+          }
+          ctx.beginPath(); ctx.arc(lxi, lyi, 7*z, 0, Math.PI*2); ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = "rgba(100,80,60,1)"; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(lxi, lyi, 7*z, 0, Math.PI*2); ctx.stroke();
+        }
+
+        // L6: 스캔라인
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(sx+br,sy); ctx.lineTo(sx+sw-br,sy);
+        ctx.arcTo(sx+sw,sy,sx+sw,sy+br,br);
+        ctx.lineTo(sx+sw,sy+sh-br); ctx.arcTo(sx+sw,sy+sh,sx+sw-br,sy+sh,br);
+        ctx.lineTo(sx+br,sy+sh); ctx.arcTo(sx,sy+sh,sx,sy+sh-br,br);
+        ctx.lineTo(sx,sy+br); ctx.arcTo(sx,sy,sx+br,sy,br);
+        ctx.closePath(); ctx.clip();
+        const scanY = (t * 60 * z) % sh;
+        for (let sly = 0; sly < sh; sly += 4*z) {
+          const scanAlpha = (sly >= scanY - 20*z && sly <= scanY) ? 0.14 : 0.07;
+          ctx.fillStyle = `rgba(0,200,100,${scanAlpha})`;
+          ctx.fillRect(sx, sy + sly, sw, 2*z);
         }
         ctx.restore();
+
+        // L7: TARGET 텍스트
+        const targAlpha = 0.6 + Math.sin(t * 4) * 0.4;
+        ctx.fillStyle = `rgba(255,60,60,${targAlpha})`;
+        ctx.font = `bold ${Math.round(13 * z)}px 'Arial Black', sans-serif`;
+        ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+        ctx.shadowBlur = 12; ctx.shadowColor = "rgba(255,0,0,0.8)";
+        ctx.fillText("⚠ TARGET ⚠", cx2, sy - 20*z);
+        ctx.shadowBlur = 0;
+
+        // L8: HP바 (TARGET 텍스트 아래, 금고 위)
+        const hpR = vault.hp / vault.maxHp;
+        const hpBW = sw, hpBH = 10*z;
+        const hpBX = sx, hpBY = sy - 36*z;
+        ctx.fillStyle = "rgba(20,10,10,0.85)"; ctx.fillRect(hpBX, hpBY, hpBW, hpBH);
+        const hpCol = hpR > 0.6 ? "rgba(80,200,80,1)" : hpR > 0.3 ? "rgba(255,180,0,1)" : "rgba(255,40,40,1)";
+        if (hpR < 0.3) { ctx.shadowBlur = 12; ctx.shadowColor = "rgba(255,0,0,0.6)"; }
+        ctx.fillStyle = hpCol; ctx.fillRect(hpBX, hpBY, hpBW * hpR, hpBH);
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = "rgba(100,80,60,0.9)"; ctx.lineWidth = 1;
+        ctx.strokeRect(hpBX, hpBY, hpBW, hpBH);
+
+        ctx.restore();
       }
+
+      // 골드 파티클 렌더
+      ctx.save();
+      for (const gp of vaultParticles) {
+        const gpx = screenX(gp.x), gpy = screenY(gp.y);
+        const alpha = gp.life / gp.maxLife;
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.fillStyle = "rgba(255,200,50,1)";
+        ctx.shadowBlur = 6; ctx.shadowColor = "rgba(255,180,0,0.8)";
+        ctx.beginPath(); ctx.arc(gpx, gpy, gp.size * z, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+      ctx.restore();
     }
 
     function drawTurretsWorld() {
       if (gameMode !== "teambattle") return;
       const z = camera.zoom;
+      const t = Date.now() * 0.001;
+
+      // 연기 업데이트
+      for (let i = turretSmoke.length - 1; i >= 0; i--) {
+        const p = turretSmoke[i];
+        p.x += p.vx * 0.016; p.y += p.vy * 0.016;
+        p.size += 0.4; p.life -= 0.016;
+        if (p.life <= 0) turretSmoke.splice(i, 1);
+      }
+
       for (const turret of turrets) {
         if (!turret.alive) continue;
         const sx = screenX(turret.x), sy = screenY(turret.y);
-        if (sx < -100 || sx > width + 100) continue;
+        if (sx < -80 || sx > width + 80 || sy < -80 || sy > height + 80) continue;
+        const isBlue = turret.team === 0;
+        const senCol = isBlue ? [0,200,255] : [255,80,0];
+        const teamRgb = isBlue ? "68,136,255" : "255,68,68";
+        const hpFrac = turret.hp / turret.maxHp;
+        const isAlert = turret.shootCd < 0.45;
+
+        // 터렛 연기 (HP < 30%)
+        if (hpFrac < 0.3 && Math.random() < 0.35) {
+          turretSmoke.push({
+            x: turret.x + (Math.random()-0.5)*12,
+            y: turret.y + (Math.random()-0.5)*12,
+            vx: (Math.random()-0.5)*15, vy: -30 - Math.random()*20,
+            size: 5, life: 0.7, maxLife: 0.7
+          });
+        }
+
         ctx.save();
-        const col = turret.team === 0 ? "#4488ff" : "#ff4444";
-        const colRgb = turret.team === 0 ? "68,136,255" : "255,68,68";
-        // 베이스 원
-        ctx.shadowColor = col; ctx.shadowBlur = 10 * z;
-        ctx.fillStyle = turret.hitFlash > 0 ? "#fff" : "#444";
-        ctx.beginPath(); ctx.arc(sx, sy, 22 * z, 0, Math.PI * 2); ctx.fill();
+
+        // L0: 탐지 범위 (alert 시)
+        if (isAlert) {
+          ctx.strokeStyle = `rgba(${teamRgb},0.18)`;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([6*z, 10*z]);
+          ctx.beginPath(); ctx.arc(sx, sy, turret.range * z, 0, Math.PI*2); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // L1: 헥사곤 아머 베이스
+        const hexR = 32 * z;
+        ctx.shadowBlur = 15 * z;
+        ctx.shadowColor = `rgba(${teamRgb},0.55)`;
+        const hexGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, hexR);
+        hexGrad.addColorStop(0, isBlue ? "rgba(60,100,160,1)" : "rgba(160,60,50,1)");
+        hexGrad.addColorStop(0.6, isBlue ? "rgba(30,50,80,1)" : "rgba(80,30,30,1)");
+        hexGrad.addColorStop(1, "rgba(10,10,10,1)");
+        ctx.fillStyle = turret.hitFlash > 0 ? "rgba(255,220,220,1)" : hexGrad;
+        ctx.beginPath();
+        for (let vi = 0; vi < 6; vi++) {
+          const va = Math.PI/6 + vi * Math.PI/3;
+          if (vi === 0) ctx.moveTo(sx + Math.cos(va)*hexR, sy + Math.sin(va)*hexR);
+          else ctx.lineTo(sx + Math.cos(va)*hexR, sy + Math.sin(va)*hexR);
+        }
+        ctx.closePath(); ctx.fill();
         ctx.shadowBlur = 0;
-        // 팀 색 링
-        ctx.strokeStyle = col; ctx.lineWidth = 2 * z;
-        ctx.beginPath(); ctx.arc(sx, sy, 24 * z, 0, Math.PI * 2); ctx.stroke();
-        // 포신
+        ctx.strokeStyle = isBlue ? "rgba(80,140,220,1)" : "rgba(220,80,70,1)";
+        ctx.lineWidth = 2 * z; ctx.stroke();
+        // 리벳
+        for (let vi = 0; vi < 6; vi++) {
+          const va = Math.PI/6 + vi * Math.PI/3;
+          ctx.fillStyle = "rgba(150,140,130,1)";
+          ctx.beginPath();
+          ctx.arc(sx + Math.cos(va)*(hexR-4*z), sy + Math.sin(va)*(hexR-4*z), 2.5*z, 0, Math.PI*2);
+          ctx.fill();
+        }
+
+        // L2: 회전 포탑 플랫폼 (도넛)
         ctx.save();
         ctx.translate(sx, sy); ctx.rotate(turret.angle);
-        ctx.fillStyle = "#666";
-        ctx.fillRect(0, -4 * z, 38 * z, 8 * z);
-        ctx.fillStyle = "#888";
-        ctx.fillRect(30 * z, -3 * z, 10 * z, 6 * z);
+        ctx.strokeStyle = isBlue ? "rgba(50,90,140,1)" : "rgba(130,50,40,1)";
+        ctx.lineWidth = (26 - 16) * z;
+        ctx.beginPath(); ctx.arc(0, 0, (16+5)*z, 0, Math.PI*2); ctx.stroke();
         ctx.restore();
-        // HP 바 (데미지 받았을 때만)
-        if (turret.hp < turret.maxHp) {
-          const bw = 44 * z, bh = 4 * z;
-          const bx = sx - bw/2, by = sy - 30 * z;
-          ctx.fillStyle = "#222"; ctx.fillRect(bx, by, bw, bh);
-          ctx.fillStyle = `rgb(${colRgb})`; ctx.fillRect(bx, by, bw * (turret.hp/turret.maxHp), bh);
+
+        // L3: 중앙 돔
+        ctx.save();
+        ctx.translate(sx, sy);
+        const domGrad = ctx.createRadialGradient(-4*z,-4*z,0, 0,0,16*z);
+        domGrad.addColorStop(0, "rgba(200,200,220,0.65)");
+        domGrad.addColorStop(0.4, isBlue ? "rgba(60,100,160,1)" : "rgba(160,60,50,1)");
+        domGrad.addColorStop(1, isBlue ? "rgba(30,50,80,1)" : "rgba(80,25,25,1)");
+        ctx.fillStyle = domGrad;
+        ctx.beginPath(); ctx.ellipse(0, 0, 16*z, 13*z, 0, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = "rgba(30,30,30,0.8)"; ctx.lineWidth = 1.5*z; ctx.stroke();
+        ctx.restore();
+
+        // L4: 더블 배럴
+        ctx.save();
+        ctx.translate(sx, sy); ctx.rotate(turret.angle);
+        for (const off of [-5*z, 5*z]) {
+          ctx.fillStyle = "rgba(55,55,60,1)";
+          ctx.fillRect(0, off - 3*z, 28*z, 6*z);
+          ctx.fillStyle = "rgba(80,80,85,1)";
+          ctx.fillRect(22*z, off - 4*z, 10*z, 8*z);
+          // 포구
+          ctx.fillStyle = "rgba(0,0,0,0.7)";
+          ctx.beginPath(); ctx.arc(32*z, off, 2*z, 0, Math.PI*2); ctx.fill();
         }
         ctx.restore();
+
+        // L5: 센서 (맥동 글로우)
+        const senPulse = Math.sin(t * 3) * (isAlert ? 8 : 4);
+        ctx.shadowBlur = (14 + senPulse) * z;
+        ctx.shadowColor = `rgba(${senCol[0]},${senCol[1]},${senCol[2]},0.9)`;
+        const senGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, 8*z);
+        senGrad.addColorStop(0, "rgba(255,255,255,1)");
+        senGrad.addColorStop(0.3, `rgba(${senCol[0]},${senCol[1]},${senCol[2]},1)`);
+        senGrad.addColorStop(0.7, `rgba(${senCol[0]},${senCol[1]},${senCol[2]},0.5)`);
+        senGrad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = senGrad;
+        ctx.beginPath(); ctx.arc(sx, sy, 8*z, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // L6: 팀 에너지 링
+        for (let ri = 0; ri < 2; ri++) {
+          const rOff = ri * 8 * z;
+          const rPulse = Math.sin(t * 2.5 + ri * 1.5);
+          ctx.strokeStyle = `rgba(${teamRgb},${ri === 0 ? 0.45 + rPulse*0.2 : 0.18})`;
+          ctx.lineWidth = (ri === 0 ? 2 : 1) * z;
+          ctx.shadowBlur = (ri === 0 ? 10 : 0) * z;
+          ctx.shadowColor = `rgba(${teamRgb},0.6)`;
+          ctx.beginPath(); ctx.arc(sx, sy, (34 + rOff + rPulse*3) * z, 0, Math.PI*2); ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+
+        // L7: 발사 이펙트 (fireFlash)
+        if (turret.fireFlash > 0) {
+          ctx.save();
+          ctx.translate(sx, sy); ctx.rotate(turret.angle);
+          const ff = turret.fireFlash;
+          for (const off of [-5*z, 5*z]) {
+            ctx.globalAlpha = ff / 0.12;
+            ctx.shadowBlur = 25; ctx.shadowColor = "rgba(255,180,0,0.9)";
+            ctx.fillStyle = "rgba(255,220,50,0.95)";
+            ctx.beginPath();
+            ctx.moveTo(32*z, off);
+            ctx.lineTo(32*z + (12 + Math.random()*10)*z, off - 6*z);
+            ctx.lineTo(32*z + (14 + Math.random()*8)*z, off);
+            ctx.lineTo(32*z + (10 + Math.random()*10)*z, off + 6*z);
+            ctx.closePath(); ctx.fill();
+            ctx.shadowBlur = 0;
+          }
+          ctx.globalAlpha = 1; ctx.restore();
+          turret.fireFlash -= 0.016;
+        }
+
+        // L8: HP바
+        if (turret.hp < turret.maxHp) {
+          const bw = 52*z, bh = 7*z;
+          const bx = sx - bw/2, by = sy - 42*z;
+          ctx.fillStyle = "rgba(20,20,20,0.85)"; ctx.fillRect(bx, by, bw, bh);
+          ctx.fillStyle = hpFrac > 0.5 ? "rgba(80,200,80,1)" : "rgba(255,60,60,1)";
+          ctx.fillRect(bx, by, bw * hpFrac, bh);
+          ctx.strokeStyle = `rgba(${teamRgb},0.7)`; ctx.lineWidth = 1;
+          ctx.strokeRect(bx, by, bw, bh);
+        }
+
+        ctx.restore();
       }
+
+      // 연기 렌더
+      ctx.save();
+      for (const sp of turretSmoke) {
+        const spx = screenX(sp.x), spy = screenY(sp.y);
+        ctx.globalAlpha = (sp.life / sp.maxLife) * 0.55;
+        ctx.fillStyle = `rgba(160,160,160,1)`;
+        ctx.beginPath(); ctx.arc(spx, spy, sp.size * z, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha = 1; ctx.restore();
     }
 
     function drawConvoyWorld() {
-      if (!convoy) return;
+      if (!convoy || !convoy.alive) return;
       const z = camera.zoom;
+      const t = Date.now() * 0.001;
       const sx = screenX(convoy.x), sy = screenY(convoy.y);
-      const sw = convoy.w * z, sh = convoy.h * z;
-      if (sx + sw < -100 || sx - sw > width + 100) return;
-      const col = convoy.team === 0 ? "#1a3a8a" : "#8a1a1a";
-      const colBright = convoy.team === 0 ? "#4466cc" : "#cc4444";
+      if (sx < -200 || sx > width + 200) return;
+
+      // 배기연기 업데이트
+      for (let i = convoySmoke.length - 1; i >= 0; i--) {
+        const p = convoySmoke[i];
+        p.x += p.vx * 0.016; p.y += p.vy * 0.016;
+        p.size += 0.5; p.life -= 0.016;
+        if (p.life <= 0) convoySmoke.splice(i, 1);
+      }
+      // 바퀴 회전
+      convoyWheelAngle += (90 / 12) * 0.016 * 57.3;
+
+      const isBlue = convoy.team === 0;
+      const sw = 120 * z, sh = 70 * z;
+      const teamRgb = isBlue ? "20,80,180" : "180,40,40";
+      const plateRgb = isBlue ? "35,65,110" : "110,35,30";
+      const hlRgb = isBlue ? "55,100,160" : "160,55,45";
+      const lightCol = isBlue ? "rgba(0,160,255,1)" : "rgba(255,80,60,1)";
+
+      // 배기연기 스폰
+      if (Math.random() < 0.5) {
+        const backAngle = convoy.angle + Math.PI;
+        convoySmoke.push({
+          x: convoy.x + Math.cos(backAngle) * 55 + (Math.random()-0.5)*8,
+          y: convoy.y + Math.sin(backAngle) * 55 + (Math.random()-0.5)*8,
+          vx: Math.cos(backAngle) * 20 + (Math.random()-0.5)*15,
+          vy: Math.sin(backAngle) * 20 + (Math.random()-0.5)*10,
+          size: 6, life: 1.0 + Math.random()*0.5, maxLife: 1.5
+        });
+      }
+
       ctx.save();
-      // convoy 이동 방향으로 회전
       ctx.translate(sx, sy);
-      ctx.rotate(convoy.angle || 0);
-      // 차체 (중심 기준)
-      ctx.fillStyle = convoy.hitFlash > 0 ? "#fff" : col;
-      ctx.strokeStyle = colBright; ctx.lineWidth = 2 * z;
+      ctx.rotate(convoy.angle);
+
+      // L1: 본체
+      ctx.shadowBlur = 18 * z;
+      ctx.shadowColor = `rgba(${teamRgb},0.45)`;
+      const bodyGrad = ctx.createLinearGradient(-sw/2, -sh/2, -sw/2, sh/2);
+      bodyGrad.addColorStop(0, convoy.hitFlash > 0 ? "rgba(255,220,220,1)" : `rgba(${plateRgb},1)`);
+      bodyGrad.addColorStop(0.4, convoy.hitFlash > 0 ? "rgba(255,220,220,1)" : `rgba(${teamRgb},1)`);
+      bodyGrad.addColorStop(1, "rgba(10,10,10,0.9)");
+      ctx.fillStyle = bodyGrad;
+      const br2 = 10 * z;
       ctx.beginPath();
-      roundRect(-sw/2, -sh/2, sw, sh, 6 * z);
-      ctx.fill(); ctx.stroke();
-      // 방향 표시 앞부분 액센트
-      ctx.fillStyle = colBright;
-      ctx.globalAlpha = 0.5;
-      ctx.fillRect(-sw/2, -sh/2, sw, sh * 0.22);
-      ctx.globalAlpha = 1;
-      // 바퀴 4개 (중심 기준)
-      ctx.fillStyle = "#222";
-      [[-0.35,-0.55],[0.35,-0.55],[-0.35,0.55],[0.35,0.55]].forEach(([rx2,ry2]) => {
-        ctx.beginPath(); ctx.arc(rx2*sw, ry2*sh, 7*z, 0, Math.PI*2); ctx.fill();
-      });
-      // 금괴 (중심)
-      ctx.fillStyle = "#FFD700";
-      ctx.shadowColor = "#FFD700"; ctx.shadowBlur = 8 * z;
-      ctx.fillRect(-10*z, -6*z, 20*z, 12*z);
+      ctx.moveTo(-sw/2+br2,-sh/2); ctx.lineTo(sw/2-br2,-sh/2);
+      ctx.arcTo(sw/2,-sh/2,sw/2,-sh/2+br2,br2);
+      ctx.lineTo(sw/2,sh/2-br2); ctx.arcTo(sw/2,sh/2,sw/2-br2,sh/2,br2);
+      ctx.lineTo(-sw/2+br2,sh/2); ctx.arcTo(-sw/2,sh/2,-sw/2,sh/2-br2,br2);
+      ctx.lineTo(-sw/2,-sh/2+br2); ctx.arcTo(-sw/2,-sh/2,-sw/2+br2,-sh/2,br2);
+      ctx.closePath(); ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.restore();
-      // CONVOY 텍스트 (회전 없이 위에 표시)
+      ctx.strokeStyle = `rgba(${hlRgb},1)`; ctx.lineWidth = 2*z; ctx.stroke();
+
+      // L2: 사선 아머 플레이팅
       ctx.save();
-      ctx.fillStyle = colBright;
-      ctx.font = `bold ${Math.round(9 * z)}px monospace`;
-      ctx.textAlign = "center"; ctx.textBaseline = "bottom";
-      ctx.fillText("CONVOY", sx, sy - sh/2 - 2*z);
-      // HP 바 (회전 없이 위에 표시)
-      const bw2 = sw, bh2 = 6*z;
-      const bx2 = sx - bw2/2, by2 = sy - sh/2 - 14*z;
-      ctx.fillStyle = "#222"; ctx.fillRect(bx2, by2, bw2, bh2);
+      ctx.beginPath();
+      ctx.moveTo(-sw/2+br2,-sh/2); ctx.lineTo(sw/2-br2,-sh/2);
+      ctx.arcTo(sw/2,-sh/2,sw/2,-sh/2+br2,br2);
+      ctx.lineTo(sw/2,sh/2-br2); ctx.arcTo(sw/2,sh/2,sw/2-br2,sh/2,br2);
+      ctx.lineTo(-sw/2+br2,sh/2); ctx.arcTo(-sw/2,sh/2,-sw/2,sh/2-br2,br2);
+      ctx.lineTo(-sw/2,-sh/2+br2); ctx.arcTo(-sw/2,-sh/2,-sw/2+br2,-sh/2,br2);
+      ctx.closePath(); ctx.clip();
+      ctx.strokeStyle = `rgba(${hlRgb},0.40)`; ctx.lineWidth = 2.5*z;
+      const aps = 14*z;
+      for (let ai = -3; ai <= 3; ai++) {
+        const aOff = ai * aps;
+        ctx.beginPath();
+        ctx.moveTo(-sw/2 + aOff - sh, -sh/2);
+        ctx.lineTo(-sw/2 + aOff, sh/2);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // L3: 바퀴 4개
+      const wheelPos = [[-sw*0.38,-sh*0.52],[sw*0.34,-sh*0.52],[-sw*0.38,sh*0.48],[sw*0.34,sh*0.48]];
+      for (const [wx, wy] of wheelPos) {
+        ctx.save();
+        ctx.translate(wx, wy);
+        ctx.rotate(convoyWheelAngle * Math.PI / 180);
+        ctx.strokeStyle = "rgba(25,25,25,1)"; ctx.lineWidth = 8*z;
+        ctx.beginPath(); ctx.arc(0, 0, 12*z, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle = "rgba(70,70,75,1)";
+        ctx.beginPath(); ctx.arc(0, 0, 8*z, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = "rgba(100,100,110,1)"; ctx.lineWidth = 1.5*z;
+        for (let si = 0; si < 4; si++) {
+          const sa = (si/4)*Math.PI*2;
+          ctx.beginPath();
+          ctx.moveTo(0,0); ctx.lineTo(Math.cos(sa)*6*z, Math.sin(sa)*6*z);
+          ctx.stroke();
+        }
+        ctx.fillStyle = "rgba(140,130,120,1)";
+        ctx.beginPath(); ctx.arc(0,0,3*z,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+
+      // L4: 금 화물칸
+      ctx.shadowBlur = 15*z; ctx.shadowColor = "rgba(255,200,50,0.75)";
+      const cgGrad = ctx.createLinearGradient(-28*z, -sh/2-22*z, -28*z, -sh/2);
+      cgGrad.addColorStop(0, "rgba(255,220,80,1)");
+      cgGrad.addColorStop(0.5, "rgba(180,130,25,1)");
+      cgGrad.addColorStop(1, "rgba(220,170,50,1)");
+      ctx.fillStyle = cgGrad;
+      ctx.beginPath();
+      ctx.rect(-28*z, -sh/2 - 22*z, 56*z, 22*z);
+      ctx.fill(); ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(100,75,15,1)"; ctx.lineWidth = 2*z; ctx.stroke();
+      for (let gi = 0; gi < 3; gi++) {
+        ctx.fillStyle = "rgba(255,240,160,0.25)";
+        ctx.fillRect(-28*z + 4*z, -sh/2 - 22*z + (gi+0.5)*6*z, 48*z, 2*z);
+      }
+
+      // L5: 전면 헤드라이트
+      for (const hl of [[sw/2-10*z, -10*z],[sw/2-10*z, 10*z]]) {
+        ctx.fillStyle = "rgba(255,255,220,1)";
+        ctx.beginPath(); ctx.arc(hl[0], hl[1], 5*z, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = isBlue ? "rgba(180,220,255,0.12)" : "rgba(255,220,180,0.12)";
+        ctx.beginPath();
+        ctx.moveTo(hl[0], hl[1]);
+        ctx.arc(hl[0], hl[1], 60*z, -Math.PI*0.25, Math.PI*0.25);
+        ctx.closePath(); ctx.fill();
+      }
+
+      // L6: 팀 상태 라이트
+      const blinkOn = Math.floor(t * 2.5) % 2 === 0;
+      for (const lp2 of [[-15*z, -sh/2-4*z],[15*z, -sh/2-4*z]]) {
+        if (blinkOn) {
+          ctx.fillStyle = lightCol;
+          ctx.shadowBlur = 14; ctx.shadowColor = lightCol;
+        } else {
+          ctx.fillStyle = "rgba(20,20,20,1)"; ctx.shadowBlur = 0;
+        }
+        ctx.beginPath(); ctx.arc(lp2[0], lp2[1], 4*z, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      // L7: 방향 화살표
+      ctx.fillStyle = "rgba(255,255,255,0.65)";
+      ctx.shadowBlur = 6; ctx.shadowColor = "rgba(255,255,255,0.4)";
+      ctx.beginPath();
+      ctx.moveTo(9*z, -sh/2+4*z); ctx.lineTo(0, -sh/2+13*z); ctx.lineTo(-9*z, -sh/2+4*z);
+      ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+
+      ctx.restore(); // rotate/translate 종료
+
+      // L8: HP바 + 아이콘 (월드 회전 해제 후)
       const hpR = convoy.hp / convoy.maxHp;
-      ctx.fillStyle = hpR > 0.5 ? "#44ff88" : hpR > 0.25 ? "#ffaa00" : "#ff3300";
+      const bw2 = 100*z, bh2 = 10*z;
+      const bx2 = sx - bw2/2, by2 = sy - sh/2 - 28*z;
+      ctx.fillStyle = "rgba(20,20,20,0.85)"; ctx.fillRect(bx2, by2, bw2, bh2);
+      ctx.fillStyle = hpR > 0.5 ? "rgba(80,200,80,1)" : hpR > 0.25 ? "rgba(255,165,0,1)" : "rgba(255,50,50,1)";
       ctx.fillRect(bx2, by2, bw2 * hpR, bh2);
-      ctx.strokeStyle = "#555"; ctx.lineWidth = 1;
-      ctx.strokeRect(bx2, by2, bw2, bh2);
+      ctx.strokeStyle = "#555"; ctx.lineWidth = 1; ctx.strokeRect(bx2, by2, bw2, bh2);
+
+      // CONVOY 텍스트
+      ctx.fillStyle = `rgba(${hlRgb},1)`;
+      ctx.font = `bold ${Math.round(11*z)}px monospace`;
+      ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      ctx.shadowBlur = 6; ctx.shadowColor = `rgba(${hlRgb},0.7)`;
+      ctx.fillText("CONVOY", sx, by2 - 2*z);
+      ctx.shadowBlur = 0;
+
+      // 경로 진행률
+      if (convoy.waypoints && convoy.waypointIdx >= 0) {
+        const prog = Math.min(1, convoy.waypointIdx / Math.max(1, convoy.waypoints.length - 1));
+        const rtext = `ROUTE ${Math.round(prog*100)}%`;
+        ctx.fillStyle = "rgba(255,255,200,0.85)";
+        ctx.font = `bold ${Math.round(9*z)}px monospace`;
+        ctx.textBaseline = "bottom";
+        ctx.shadowBlur = 6; ctx.shadowColor = "rgba(255,200,50,0.7)";
+        ctx.fillText(rtext, sx, by2 - 14*z);
+        ctx.shadowBlur = 0;
+      }
+
+      // 배기연기 렌더
+      ctx.save();
+      for (const sp of convoySmoke) {
+        const spx = screenX(sp.x), spy = screenY(sp.y);
+        ctx.globalAlpha = (sp.life / sp.maxLife) * 0.5;
+        ctx.fillStyle = "rgba(140,130,120,1)";
+        ctx.beginPath(); ctx.arc(spx, spy, sp.size * z, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
       ctx.restore();
     }
 
     function drawCinematic() {
-      if (!cinematicState) return;
+      if (!cinematicState && letterboxT <= 0) return;
       const c = cinematicState;
-      const cx = width / 2, cy = height / 2;
+      const tt = c ? c.totalTimer : 0;
+      const cxS = width / 2, cyS = height / 2;
+      const z = camera.zoom;
+
       ctx.save();
       ctx.setTransform(scale, 0, 0, scale, splitPanelOffsetX * scale, 0);
+
       // 반투명 오버레이
-      ctx.fillStyle = "rgba(0,0,0,0.62)";
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
       ctx.fillRect(0, 0, width, height);
-      // 방호복 파편 렌더 (screenX/Y 변환으로 올바르게 표시)
+
+      // 금괴 비산 렌더
       ctx.save();
-      ctx.setTransform(scale, 0, 0, scale, splitPanelOffsetX * scale, 0);
-      for (const p of c.armorPieces) {
-        if (p.life >= p.maxLife) continue; // life가 maxLife에 도달하면 사라짐
-        const alpha = Math.max(0, 1 - p.life / p.maxLife);
-        const px = screenX(p.x), py = screenY(p.y);
+      for (const gb of goldBars) {
+        const gsx = screenX(gb.x), gsy = screenY(gb.y);
         ctx.save();
-        ctx.globalAlpha = alpha;
-        ctx.translate(px, py); ctx.rotate(p.rot);
-        ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color; ctx.shadowBlur = 8;
-        const s = p.size * camera.zoom;
-        ctx.fillRect(-s/2, -s/2, s, s);
+        ctx.globalAlpha = Math.min(1, gb.life / 0.5);
+        ctx.translate(gsx, gsy); ctx.rotate(gb.rot);
+        const goldGrad = ctx.createLinearGradient(-gb.w*z/2, -gb.h*z/2, -gb.w*z/2, gb.h*z/2);
+        goldGrad.addColorStop(0, "rgba(255,220,80,1)");
+        goldGrad.addColorStop(0.5, "rgba(180,130,25,1)");
+        goldGrad.addColorStop(1, "rgba(255,200,50,1)");
+        ctx.fillStyle = goldGrad;
+        ctx.shadowBlur = 10; ctx.shadowColor = "rgba(255,180,0,0.8)";
+        ctx.fillRect(-gb.w*z/2, -gb.h*z/2, gb.w*z, gb.h*z);
         ctx.restore();
       }
+      ctx.globalAlpha = 1;
       ctx.restore();
-      // vault_explode 충격파 링
-      if (c.phase === "vault_explode" || (c.phase === "armor_equip" && c.timer < 0.5)) {
-        const ringT = c.explodeRing || 0;
-        const ringR = ringT * Math.min(width, height) * 0.45;
-        const ringAlpha = Math.max(0, 1 - ringT * 1.2);
+
+      // 방호복 피스 렌더 (armor_equip 페이즈, tt≥7.5)
+      if (c && tt >= 7.5) {
         ctx.save();
-        ctx.strokeStyle = `rgba(255, 200, 0, ${ringAlpha})`;
-        ctx.lineWidth = (1 - ringT) * 12 + 1;
-        ctx.shadowColor = "#FFD700"; ctx.shadowBlur = 20;
-        ctx.beginPath(); ctx.arc(cx, cy, Math.max(1, ringR), 0, Math.PI * 2); ctx.stroke();
-        // 두 번째 작은 링 (50ms 지연)
-        const ringR2 = Math.max(0, ringT - 0.15) * Math.min(width, height) * 0.38;
-        const ringAlpha2 = Math.max(0, 1 - Math.max(0, ringT - 0.15) * 1.4);
-        ctx.strokeStyle = `rgba(255, 140, 0, ${ringAlpha2})`;
-        ctx.lineWidth = (1 - Math.max(0, ringT - 0.15)) * 8 + 1;
-        ctx.beginPath(); ctx.arc(cx, cy, Math.max(1, ringR2), 0, Math.PI * 2); ctx.stroke();
-        ctx.shadowBlur = 0;
+        for (const ap of armorPieceAnims) {
+          if (ap.progress <= 0) continue;
+          const t2 = ap.progress;
+          const ease = t2 < 0.5 ? 2*t2*t2 : -1+(4-2*t2)*t2;
+          const curX = ap.sx + (ap.tx - ap.sx) * ease;
+          const curY = ap.sy + (ap.ty - ap.sy) * ease - Math.sin(Math.PI * t2) * 80;
+          const gsx = screenX(curX), gsy = screenY(curY);
+          ctx.save();
+          ctx.translate(gsx, gsy); ctx.rotate(ap.rot);
+          ctx.globalAlpha = ap.landed ? 0.5 : 1.0;
+          ctx.fillStyle = ap.color;
+          ctx.shadowBlur = 14; ctx.shadowColor = ap.color;
+          const s = ap.size * z;
+          ctx.fillRect(-s/2, -s/2, s, s);
+          ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 1;
+          ctx.strokeRect(-s/2, -s/2, s, s);
+          ctx.restore();
+        }
+        ctx.globalAlpha = 1; ctx.shadowBlur = 0;
         ctx.restore();
       }
-      // 자막
-      let msg = "";
-      if (c.phase === "vault_explode") msg = "VAULT BREACHED!";
-      else if (c.phase === "armor_equip") msg = "ARMOR EQUIPPED";
-      else if (c.phase === "convoy_appear") msg = "CONVOY DEPLOYED";
-      else if (c.phase === "convoy_load") msg = "LOADING GOLD...";
-      ctx.fillStyle = "#FFD700";
-      ctx.font = `bold 28px monospace`;
-      ctx.textAlign = "center"; ctx.textBaseline = "top";
-      ctx.shadowColor = "#FF8800"; ctx.shadowBlur = 20;
-      ctx.fillText(msg, cx, 40);
-      ctx.shadowBlur = 0;
-      // 골드 로딩 바 (convoy_load 페이즈)
-      if (c.phase === "convoy_load") {
-        const bw = 300, bh = 16, bx = cx - bw/2, by = cy + 80;
-        ctx.fillStyle = "#333"; ctx.fillRect(bx, by, bw, bh);
-        ctx.fillStyle = "#FFD700"; ctx.fillRect(bx, by, bw * c.goldLoadProgress, bh);
-        ctx.strokeStyle = "#888"; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, bh);
-        ctx.fillStyle = "#fff"; ctx.font = "12px monospace";
-        ctx.textBaseline = "top";
-        ctx.fillText("LOADING GOLD " + Math.round(c.goldLoadProgress * 100) + "%", cx, by + bh + 8);
+
+      // === 자막 텍스트 ===
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+
+      // Phase 1: VAULT DESTROYED (5~7s)
+      if (c && tt >= 5.0 && tt < 7.5) {
+        const fadeIn = Math.min(1, (tt - 5.0) / 0.5);
+        const fadeOut = tt > 6.5 ? Math.max(0, 1 - (tt-6.5)/0.5) : 1;
+        const scale2 = tt < 5.5 ? 1.5 - (tt-5.0)/0.5*0.5 : 1.0;
+        ctx.save();
+        ctx.globalAlpha = fadeIn * fadeOut;
+        ctx.translate(cxS, cyS * 0.38);
+        ctx.scale(scale2, scale2);
+        ctx.font = `bold 52px 'Arial Black', Arial, sans-serif`;
+        ctx.strokeStyle = "rgba(255,200,50,1)"; ctx.lineWidth = 4;
+        ctx.shadowBlur = 30; ctx.shadowColor = "rgba(255,0,0,0.9)";
+        ctx.strokeText("VAULT DESTROYED!", 0, 0);
+        ctx.fillStyle = "rgba(255,60,60,1)";
+        ctx.fillText("VAULT DESTROYED!", 0, 0);
+        ctx.restore();
       }
-      // convoy_appear/convoy_load 페이즈: 목적지 방향 화살표 + 미션 브리핑
-      if (c.phase === "convoy_appear" || c.phase === "convoy_load") {
-        if (c.waypoints && c.waypoints.length > 0) {
-          const dest = c.waypoints[c.waypoints.length - 1];
-          const dsx = screenX(dest.x), dsy = screenY(dest.y);
-          const destAngle = Math.atan2(dsy - cy, dsx - cx);
 
+      // Phase 2: ARMOR EQUIPPED (13~15s)
+      if (c && tt >= 13 && tt < 15) {
+        const fadeIn = Math.min(1, (tt-13)/0.4);
+        const fadeOut = tt > 14 ? Math.max(0, 1-(tt-14)/0.5) : 1;
+        const sc2 = tt < 13.4 ? 2.5-(tt-13)/0.4*1.5 : 1.0 + Math.sin(tt*3)*0.04;
+        const armorCol = c.armorCol || "#FFD700";
+        ctx.save();
+        ctx.globalAlpha = fadeIn * fadeOut;
+        ctx.translate(cxS, cyS * 0.38);
+        ctx.scale(sc2, sc2);
+        ctx.font = `bold 44px 'Arial Black', Arial, sans-serif`;
+        ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = 3;
+        ctx.shadowBlur = 25; ctx.shadowColor = armorCol;
+        ctx.strokeText("ARMOR EQUIPPED", 0, 0);
+        ctx.fillStyle = armorCol;
+        ctx.fillText("ARMOR EQUIPPED", 0, 0);
+        ctx.restore();
+      }
+
+      // Phase 3: ESCORT THE CONVOY (convoy_appear 후)
+      if (c && c.phase === "convoy_appear" && c.timer >= 4.5) {
+        const fadeIn = Math.min(1, (c.timer - 4.5) / 0.6);
+        const blink = 0.7 + Math.sin(tt*6)*0.3;
+        ctx.save();
+        ctx.globalAlpha = fadeIn * blink;
+        ctx.translate(cxS, cyS * 0.35);
+        ctx.font = `bold 40px 'Arial Black', Arial, sans-serif`;
+        ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 4;
+        ctx.shadowBlur = 20; ctx.shadowColor = "rgba(255,220,50,0.9)";
+        ctx.strokeText("ESCORT THE CONVOY!", 0, 0);
+        ctx.fillStyle = "rgba(255,220,50,1)";
+        ctx.fillText("ESCORT THE CONVOY!", 0, 0);
+        ctx.restore();
+      }
+
+      // 화물 적재 진행바 (convoy_appear, cargoLoadProgress > 0)
+      if (c && c.phase === "convoy_appear" && cargoLoadProgress > 0) {
+        const bw3 = 200, bh3 = 16;
+        const bx3 = cxS - bw3/2, by3 = cyS * 1.6;
+        ctx.save();
+        ctx.fillStyle = "rgba(20,20,20,0.8)"; ctx.fillRect(bx3, by3, bw3, bh3);
+        const lpGrad = ctx.createLinearGradient(bx3, by3, bx3+bw3, by3);
+        lpGrad.addColorStop(0, "rgba(255,200,50,1)");
+        lpGrad.addColorStop(1, "rgba(255,240,100,1)");
+        ctx.fillStyle = lpGrad; ctx.fillRect(bx3, by3, bw3 * cargoLoadProgress, bh3);
+        ctx.strokeStyle = "rgba(200,160,30,0.8)"; ctx.lineWidth = 1.5;
+        ctx.strokeRect(bx3, by3, bw3, bh3);
+        ctx.fillStyle = cargoLoadProgress < 1 ? "rgba(255,230,100,1)" : "rgba(100,255,150,1)";
+        ctx.font = `bold 11px monospace`;
+        ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+        ctx.fillText(cargoLoadProgress < 1 ? "LOADING CARGO..." : "CARGO SECURED!", cxS, by3 - 4);
+        ctx.restore();
+      }
+
+      // 카운트다운 (totalTimer 22~26s)
+      if (c && c.totalTimer > 22) {
+        const cdTime = c.totalTimer - 22;
+        if (cdTime >= 0 && cdTime < 4) {
+          const cdNum = 3 - Math.floor(cdTime);
+          if (cdNum > 0) {
+            const cdFrac = cdTime % 1;
+            const cdScale = 1.8 - cdFrac * 0.8;
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, 1 - cdFrac * 1.2);
+            ctx.translate(cxS, cyS * 0.42);
+            ctx.scale(cdScale, cdScale);
+            ctx.font = `bold 90px 'Arial Black', Arial, sans-serif`;
+            ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 8;
+            ctx.shadowBlur = 20; ctx.shadowColor = "rgba(255,220,50,0.8)";
+            ctx.strokeText(String(cdNum), 0, 0);
+            ctx.fillStyle = "rgba(255,255,255,1)";
+            ctx.fillText(String(cdNum), 0, 0);
+            ctx.restore();
+          }
+        } else if (cdTime >= 4 && cdTime < 5.5) {
+          const gFrac = (cdTime - 4) / 1.5;
+          const gScale = Math.max(0.6, 3 - gFrac * 2.5);
           ctx.save();
-          // 목적지 레이블 (화면 중앙 아래)
-          ctx.fillStyle = "rgba(255,255,255,0.85)";
-          ctx.font = "bold 14px monospace";
-          ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.shadowColor = "#00aaff"; ctx.shadowBlur = 10;
-          ctx.fillText("► ESCORT THE CONVOY TO BASE ◄", cx, cy + 60);
-          ctx.shadowBlur = 0;
-
-          // 목적지 방향 화살표 (화면 엣지)
-          const margin = 55;
-          const hw = width / 2 - margin, hh = height / 2 - margin;
-          const ax = cx + Math.cos(destAngle) * hw;
-          const ay = cy + Math.sin(destAngle) * hh;
-          ctx.translate(ax, ay); ctx.rotate(destAngle);
-          ctx.fillStyle = c.destroyerTeam === 0 ? "#4488ff" : "#ff4444";
-          ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 12;
-          ctx.beginPath();
-          ctx.moveTo(16, 0); ctx.lineTo(-10, -9); ctx.lineTo(-10, 9);
-          ctx.closePath(); ctx.fill();
-          ctx.fillStyle = "#fff"; ctx.font = "bold 9px monospace";
-          ctx.rotate(-destAngle);
-          ctx.fillText("BASE", 0, 20);
+          ctx.globalAlpha = Math.max(0, 1 - gFrac * 1.3);
+          ctx.translate(cxS, cyS * 0.42);
+          ctx.scale(gScale, gScale);
+          ctx.font = `bold 80px 'Arial Black', Arial, sans-serif`;
+          ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 6;
+          ctx.shadowBlur = 30; ctx.shadowColor = "rgba(255,220,50,0.9)";
+          ctx.strokeText("GO!", 0, 0);
+          ctx.fillStyle = "rgba(255,220,50,1)";
+          ctx.fillText("GO!", 0, 0);
           ctx.restore();
         }
       }
-      // 타이머
-      const remaining = Math.ceil(c.maxDuration - c.totalTimer);
-      ctx.fillStyle = "rgba(255,255,255,0.6)";
-      ctx.font = "12px monospace";
-      ctx.textBaseline = "bottom";
-      ctx.fillText(`AUTO-RESUME IN ${remaining}s`, cx, height - 20);
+
+      // 레터박스 (상하 검은 바)
+      if (letterboxT > 0) {
+        const barH = height * 0.09 * letterboxT;
+        ctx.fillStyle = "rgba(0,0,0,1)";
+        ctx.fillRect(0, 0, width, barH);
+        ctx.fillRect(0, height - barH, width, barH);
+      }
+
       ctx.restore();
     }
 

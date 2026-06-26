@@ -7060,6 +7060,9 @@
       for (const tb of taserBullets) {
         drawLightTexture(lightCtx, assets.lightSmall, screenX(tb.x), screenY(tb.y), 0, 80 * z, 80 * z, 0.5);
       }
+      // globalCompositeOperation 리셋 — destination-out 상태가 다음 프레임으로 누출되는 것 방지
+      lightCtx.globalCompositeOperation = "source-over";
+      lightCtx.globalAlpha = 1;
 
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
       ctx.drawImage(lightCanvas, 0, 0, width, height);
@@ -7372,6 +7375,7 @@
       target.drawImage(img, -w / 2, -h / 2, w, h);
       target.restore();
       target.globalAlpha = 1;
+      target.globalCompositeOperation = "source-over";
     }
 
     function drawHud() {
@@ -9483,16 +9487,16 @@
           const sc = -d * 0.6 + hpBonus;
           if (sc > bestScore) { bestScore = sc; target = { x: player.x, y: player.y, isPlayer: true }; targetId = 'player'; }
         }
-        // 적 AI (같은 점수 방식)
-        if (!defenseMode) {
-          for (let oi = 0; oi < aiPlayers.length; oi++) {
-            const o = aiPlayers[oi];
-            if (!o.alive || o.team === ai.team) continue;
-            const d = Math.hypot(o.x - ai.x, o.y - ai.y);
-            const hpBonus = o.maxHp > 0 ? (1 - o.hp / o.maxHp) * 130 : 0;
-            const sc = -d * 0.6 + hpBonus;
-            if (sc > bestScore) { bestScore = sc; target = o; targetId = 'ai' + oi; }
-          }
+        // 적 AI (같은 점수 방식) — defenseMode여도 전체 스캔 (550px 초과 적도 인식)
+        for (let oi = 0; oi < aiPlayers.length; oi++) {
+          const o = aiPlayers[oi];
+          if (!o.alive || o.team === ai.team) continue;
+          const d = Math.hypot(o.x - ai.x, o.y - ai.y);
+          // defenseMode일 때는 가까운 적 우선 (600 보너스), 원거리도 타겟 가능
+          const defBonus = defenseMode ? Math.max(0, 600 - d) : 0;
+          const hpBonus = o.maxHp > 0 ? (1 - o.hp / o.maxHp) * 130 : 0;
+          const sc = -d * 0.6 + hpBonus + defBonus;
+          if (sc > bestScore) { bestScore = sc; target = o; targetId = 'ai' + oi; }
         }
         // 기지 공격 (적 없을 때) — 방어 모드는 기지 근처에서 적을 기다림
         if (!target && !defenseMode) {

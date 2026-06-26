@@ -163,6 +163,8 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 131 | 플레이어 폭탄 사거리 | `throwBomb()` — range 140 → Math.min(190, d) (AI와 동일)
 | 132 | 카메라 부드러운 lerp 추적 | `updateCamera()` — 이동 중 baseFollow=7.5, 정지 시 13, 리스폰 4.5; `1 - Math.exp(-base*dt)` 공식으로 프레임 독립적 추적 |
 | 133 | 브롤스타즈식 ray-cast 시야 | `drawRaycastLight()` — 120개 ray 전방위 발사, 벽 히트 다각형 clip, radial gradient 페이드; 배경 어둠 0.88 |
+| 134 | 우리편 AI 사격 버그 수정 | `updateAI()` — `if (!defenseMode)` 제거, defenseMode여도 적 AI 전체 스캔; defBonus로 근접 우선 |
+| 135 | 화면 어두워짐 버그 수정 | lightCtx `destination-out` 상태 누출 방지 — `drawLightTexture()` 및 빛 드로잉 블록 끝에 `globalCompositeOperation = "source-over"` 리셋 추가 |
 
 ## 미구현 (요청됨)
 - 주소창 숨기기

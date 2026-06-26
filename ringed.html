@@ -7051,6 +7051,19 @@
       drawBlastLights(lightCtx);
       drawRadialLight(lightCtx, px, py, 20 * z, 180 * z, fillEnergy * 1.0);
       drawRaycastLight(lightCtx, lp.x, lp.y, 480, mainEnergy * 0.94);
+      // 아군 팀 시야 공유 — 같은 팀원이 보는 시야도 밝혀줌
+      if (gameMode === "teambattle") {
+        for (const ally of aiPlayers) {
+          if (!ally.alive || ally.team !== playerTeam) continue;
+          const ax = screenX(ally.x);
+          const ay = screenY(ally.y);
+          if (ax < -600 || ay < -600 || ax > width + 600 || ay > height + 600) continue;
+          // 팀원 위치는 항상 밝게 (작은 원형 빛)
+          drawRadialLight(lightCtx, ax, ay, 15 * z, 60 * z, 0.90);
+          // 팀원의 시야각 공유 (80 ray, 성능 최적화)
+          drawRaycastLight(lightCtx, ally.x, ally.y, 380, mainEnergy * 0.80, 80);
+        }
+      }
       drawLightTexture(lightCtx, assets.flashlight, beamCenter.x, beamCenter.y, lp.angle + Math.PI / 2, 1024 * 0.2 * originalScalePulse * z, 1024 * 0.2 * originalScalePulse * z, mainEnergy * 0.07);
       for (const flash of flashes) {
         const alpha = Math.max(0, flash.life / flash.maxLife);
@@ -7280,9 +7293,9 @@
 
     // 브롤스타즈식 ray-cast 시야 — 벽 그림자 다각형 렌더링
     // wx, wy: 플레이어 월드 좌표 / maxRadius: 월드 단위 시야 반경 / energy: 밝기
-    function drawRaycastLight(target, wx, wy, maxRadius, energy) {
+    function drawRaycastLight(target, wx, wy, maxRadius, energy, numRays = 240) {
       const z = camera.zoom;
-      const NUM_RAYS = 240;          // ray 개수 (성능 vs 품질)
+      const NUM_RAYS = numRays;      // ray 개수 (성능 vs 품질)
       const blockers = explosionBlockers();
 
       // 각 ray 방향으로 가장 가까운 벽 히트 거리를 구함

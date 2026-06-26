@@ -7028,7 +7028,9 @@
         y: 0.776039 + (-5.71774 - 0.776039) * flickerPhase
       };
       const maxHp = gameMode === "teambattle" ? playerChar.tbHp : Math.round(100 * playerChar.hpMult);
-      const healthEnergy = Math.min(1.0, (lp.hp || maxHp) / maxHp);
+      const rawHp = (lp.hp || maxHp);
+      // 팀배틀 모드는 HP 연동 시야 감소 없음 (AI 사격으로 HP 낮아지면 화면 어두워지는 문제 방지)
+      const healthEnergy = gameMode === "teambattle" ? 1.0 : Math.min(1.0, rawHp / maxHp);
       const mainEnergy = 0.98 * healthEnergy;
       const fillEnergy = 0.38 * healthEnergy;
       const beamCenter = {
@@ -7386,8 +7388,7 @@
       target.rotate(angle);
       target.drawImage(img, -w / 2, -h / 2, w, h);
       target.restore();
-      target.globalAlpha = 1;
-      target.globalCompositeOperation = "source-over";
+      // globalAlpha/globalCompositeOperation은 save/restore로 완전 복원 — 수동 리셋 제거
     }
 
     function drawHud() {

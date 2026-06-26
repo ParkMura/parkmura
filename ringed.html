@@ -391,7 +391,7 @@
         startIntroSequence();
         return;
       }
-      if (state === "play" && teamBattleWon !== null) { gameMode = "classic"; tbOnlineMode=false; goMainMenu(); return; }
+      if (state === "play" && teamBattleWon !== null) { const eb = vaultExitBtnRect(); if (mouse.x>=eb.x && mouse.x<=eb.x+eb.w && mouse.y>=eb.y && mouse.y<=eb.y+eb.h) { gameMode = "classic"; tbOnlineMode=false; goMainMenu(); return; } return; }
       if (state === "menu" && handleMenuClick(mouse.x, mouse.y)) return;
       if (state === "charselect") { handleCharSelectClick(mouse.x, mouse.y); return; }
       if (state === "teamselect") { handleTeamSelectClick(mouse.x, mouse.y); return; }
@@ -8332,7 +8332,7 @@
           handleTeamSelectClick(p.x, p.y);
           return;
         }
-        if (state === "play" && teamBattleWon !== null) { gameMode = "classic"; goMainMenu(); return; }
+        if (state === "play" && teamBattleWon !== null) { const eb = vaultExitBtnRect(); if (p.x>=eb.x && p.x<=eb.x+eb.w && p.y>=eb.y && p.y<=eb.y+eb.h) { gameMode = "classic"; goMainMenu(); return; } return; }
         if (state === "dead") {
           startGame();
           return;
@@ -9397,14 +9397,14 @@
       player.hp = playerChar.tbHp;
       // 금고(Vault)로 재정의 — facilities 완전 교체
       facilities.length=0;
-      facilities.push({ x:55, y:1100, w:90, h:160, hp:3000, maxHp:3000, team:0,
+      facilities.push({ x:360, y:1454, w:120, h:200, hp:3000, maxHp:3000, team:0,
         isVault:true, destroyed:false, destroyerTeam:null, glowPhase:0 });
-      facilities.push({ x:3155, y:1100, w:90, h:160, hp:3000, maxHp:3000, team:1,
+      facilities.push({ x:2820, y:1454, w:120, h:200, hp:3000, maxHp:3000, team:1,
         isVault:true, destroyed:false, destroyerTeam:null, glowPhase:Math.PI });
       // 리스폰 플랫폼, 터렛, convoy 초기화
       spawnPlatforms = [
-        { x:300, y:1200, r:140, team:0, glowPhase:0 },
-        { x:3000, y:1200, r:140, team:1, glowPhase:Math.PI }
+        { x:420, y:1554, r:140, team:0, glowPhase:0 },
+        { x:2880, y:1554, r:140, team:1, glowPhase:Math.PI }
       ];
       turrets = [];
       setupTurrets();
@@ -9435,10 +9435,10 @@
 
     function setupTurrets() {
       turrets = [
-        { x:160, y:1070, team:0, hp:400, maxHp:400, angle:0, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
-        { x:160, y:1330, team:0, hp:400, maxHp:400, angle:0, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
-        { x:3140, y:1070, team:1, hp:400, maxHp:400, angle:Math.PI, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
-        { x:3140, y:1330, team:1, hp:400, maxHp:400, angle:Math.PI, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 }
+        { x:240,  y:1400, team:0, hp:400, maxHp:400, angle:0, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
+        { x:240,  y:1620, team:0, hp:400, maxHp:400, angle:0, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
+        { x:3060, y:1400, team:1, hp:400, maxHp:400, angle:Math.PI, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
+        { x:3060, y:1620, team:1, hp:400, maxHp:400, angle:Math.PI, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 }
       ];
     }
 
@@ -9499,7 +9499,7 @@
         if (dist < 40) {
           convoy.waypointIdx++;
         } else {
-          const spd = 90 * dt;
+          const spd = 45 * dt;
           const targetAngle = Math.atan2(dy, dx);
           // 각도 lerp (최단 경로 회전)
           let angleDiff = targetAngle - convoy.angle;
@@ -9652,19 +9652,13 @@
       }
 
       // === 카메라 타겟 전환 ===
-      if (tt < 2) {
+      if (tt < 8) {
+        // Phase 0-8s: stay on vault explosion
         cinematicCamera.targetX = c.vX;
         cinematicCamera.targetY = c.vY;
         cinematicCamera.lerpSpeed = 3.5;
-      } else if (tt >= 5.5 && tt < 8) {
-        cinematicCamera.targetX = c.destroyerX;
-        cinematicCamera.targetY = c.destroyerY;
-        cinematicCamera.lerpSpeed = 2.5;
-      } else if (tt >= 13.5 && tt < 16) {
-        cinematicCamera.targetX = c.vX + (c.destroyerTeam === 0 ? 200 : -200);
-        cinematicCamera.targetY = c.vY;
-        cinematicCamera.lerpSpeed = 2.0;
-      } else if (tt >= 20.5 && tt < 24) {
+      } else if (tt >= 8) {
+        // Phase 8s+: lerp back to player
         cinematicCamera.targetX = player.x;
         cinematicCamera.targetY = player.y;
         cinematicCamera.lerpSpeed = 1.8;
@@ -11523,6 +11517,11 @@
       ctx.restore();
     }
 
+    function vaultExitBtnRect() {
+      const cx = canvas.width/2, cy = canvas.height/2;
+      return {x: cx-100, y: cy+100, w:200, h:50};
+    }
+
     function drawVaultMissionOverlay() {
       if (!teamBattleWon) return;
       const cx = width / 2, cy = height / 2;
@@ -11578,10 +11577,21 @@
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(`KILLS  ${myKills} — ${enemyKills}`, cx, cy + cy * 0.22);
       }
-      // 재시작 안내
-      ctx.font = `${Math.round(height * 0.018)}px monospace`;
-      ctx.fillStyle = "rgba(255,255,255,0.5)";
-      ctx.fillText("TAP TO RETURN TO MENU", cx, cy + cy * 0.28);
+      // EXIT 버튼
+      const exitBtn = vaultExitBtnRect();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#1a1a2e';
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.rect(exitBtn.x, exitBtn.y, exitBtn.w, exitBtn.h);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 22px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('EXIT TO MENU', exitBtn.x + exitBtn.w/2, exitBtn.y + exitBtn.h/2);
       ctx.restore();
     }
 

@@ -168,6 +168,8 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 136 | 화면 어두워짐 완전 수정 | lightCtx 전체 destination-out 블록 save/restore 래핑 |
 | 137 | 시야각 부드럽게 개선 | NUM_RAYS 120→240, 그라디언트 6단계, 소프트엣지 보조 그라디언트 |
 | 138 | 팀별 총알 색상 구분 | 아군=파란색, 적=빨간색, enemyTracers에 team 프로퍼티 추가 |
+| 139 | drawLightTexture composite 버그 수정 | save/restore 이후 수동 source-over 리셋 제거 — destination-out 블록 내 모든 빛 텍스처 올바르게 동작 |
+| 140 | 팀배틀 시야 HP 연동 해제 | healthEnergy = gameMode==="teambattle" ? 1.0 : hp/maxHp — AI 사격 데미지로 화면 어두워지는 문제 완전 해결 |
 
 ## 미구현 (요청됨)
 - 주소창 숨기기

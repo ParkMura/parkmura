@@ -162,9 +162,9 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 130 | 조준선 제거 | `drawAimLaser()` 호출 제거 (함수 정의는 유지) |
 | 131 | 플레이어 폭탄 사거리 | `throwBomb()` — range 140 → Math.min(190, d) (AI와 동일)
 | 132 | 카메라 부드러운 lerp 추적 | `updateCamera()` — 이동 중 baseFollow=7.5, 정지 시 13, 리스폰 4.5; `1 - Math.exp(-base*dt)` 공식으로 프레임 독립적 추적 |
+| 133 | 브롤스타즈식 ray-cast 시야 | `drawRaycastLight()` — 120개 ray 전방위 발사, 벽 히트 다각형 clip, radial gradient 페이드; 배경 어둠 0.88 |
 
 ## 미구현 (요청됨)
-- 브롤스타즈식 사선 시야
 - 주소창 숨기기
 
 ## 작업 후 반드시 할 것

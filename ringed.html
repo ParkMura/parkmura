@@ -7040,7 +7040,7 @@
       lightCtx.setTransform(scale, 0, 0, scale, 0, 0);
       lightCtx.clearRect(0, 0, width, height);
       lightCtx.globalCompositeOperation = "source-over";
-      lightCtx.fillStyle = "rgba(0, 0, 0, 0.62)";
+      lightCtx.fillStyle = "rgba(0, 0, 0, 0.88)";
       lightCtx.fillRect(0, 0, width, height);
 
       lightCtx.globalCompositeOperation = "destination-out";
@@ -7048,8 +7048,7 @@
       drawKillLights(lightCtx);
       drawBlastLights(lightCtx);
       drawRadialLight(lightCtx, px, py, 20 * z, 180 * z, fillEnergy * 1.0);
-      drawSoftConeLight(lightCtx, px, py, lp.angle, 480 * z, 1.22, mainEnergy * 0.92);
-      drawSoftConeLight(lightCtx, px + forward.x * 52 * z, py + forward.y * 52 * z, lp.angle, 340 * z, 0.9, mainEnergy * 0.42);
+      drawRaycastLight(lightCtx, lp.x, lp.y, 480, mainEnergy * 0.94);
       drawLightTexture(lightCtx, assets.flashlight, beamCenter.x, beamCenter.y, lp.angle + Math.PI / 2, 1024 * 0.2 * originalScalePulse * z, 1024 * 0.2 * originalScalePulse * z, mainEnergy * 0.07);
       for (const flash of flashes) {
         const alpha = Math.max(0, flash.life / flash.maxLife);
@@ -7271,6 +7270,59 @@
         target.closePath();
         target.fill();
       }
+    }
+
+    // 브롤스타즈식 ray-cast 시야 — 벽 그림자 다각형 렌더링
+    // wx, wy: 플레이어 월드 좌표 / maxRadius: 월드 단위 시야 반경 / energy: 밝기
+    function drawRaycastLight(target, wx, wy, maxRadius, energy) {
+      const z = camera.zoom;
+      const NUM_RAYS = 120;          // ray 개수 (성능 vs 품질)
+      const blockers = explosionBlockers();
+
+      // 각 ray 방향으로 가장 가까운 벽 히트 거리를 구함
+      const pts = [];
+      for (let i = 0; i < NUM_RAYS; i++) {
+        const rayAngle = (i / NUM_RAYS) * Math.PI * 2;
+        const rdx = Math.cos(rayAngle);
+        const rdy = Math.sin(rayAngle);
+        let hitDist = maxRadius;
+        for (const rect of blockers) {
+          const t = rayRect(wx, wy, rdx, rdy, rect);
+          if (t !== null && t > 1 && t < hitDist) hitDist = t;
+        }
+        // 월드 좌표 히트 포인트 → 스크린 좌표로 변환
+        const hx = wx + rdx * hitDist;
+        const hy = wy + rdy * hitDist;
+        pts.push({ sx: screenX(hx), sy: screenY(hy) });
+      }
+
+      // 플레이어 스크린 좌표
+      const spx = screenX(wx);
+      const spy = screenY(wy);
+      const screenRadius = maxRadius * z;
+
+      // 1단계: visible polygon을 clip 영역으로 설정
+      target.save();
+      target.beginPath();
+      target.moveTo(pts[0].sx, pts[0].sy);
+      for (let i = 1; i < pts.length; i++) {
+        target.lineTo(pts[i].sx, pts[i].sy);
+      }
+      target.closePath();
+      target.clip();
+
+      // 2단계: clip 영역 안에 radial gradient로 자연스러운 밝기 페이드 적용
+      const grad = target.createRadialGradient(spx, spy, 0, spx, spy, screenRadius);
+      grad.addColorStop(0,    "rgba(0,0,0," + (energy * 0.95) + ")");
+      grad.addColorStop(0.35, "rgba(0,0,0," + (energy * 0.82) + ")");
+      grad.addColorStop(0.72, "rgba(0,0,0," + (energy * 0.45) + ")");
+      grad.addColorStop(1,    "rgba(0,0,0,0)");
+      target.fillStyle = grad;
+      target.beginPath();
+      target.arc(spx, spy, screenRadius, 0, Math.PI * 2);
+      target.fill();
+
+      target.restore();
     }
 
     function drawRadialLight(target, x, y, inner, outer, energy) {

@@ -3519,6 +3519,11 @@
           if (isInDoorApproach(ai, door)) requestedByEnemy = true;
           if (isInDoorHoldZone(ai, door)) holdingEnemy = true;
         }
+        // Convoy triggers doors too
+        if (convoy && convoy.alive && convoy.goldLoaded) {
+          if (isInDoorApproach(convoy, door)) requestedByEnemy = true;
+          if (isInDoorHoldZone(convoy, door)) holdingEnemy = true;
+        }
         const requested = requestedByPlayer || requestedByEnemy;
         const occupiedWhileOpen = door.open > 0.08 && (holdingPlayer || holdingEnemy);
         door.target = requested || occupiedWhileOpen ? 1 : 0;
@@ -9500,14 +9505,28 @@
           convoy.waypointIdx++;
         } else {
           const spd = 45 * dt;
-          const targetAngle = Math.atan2(dy, dx);
-          // 각도 lerp (최단 경로 회전)
+          // Wall avoidance: probe 70px ahead and steer perpendicular
+          const nx = dx / dist, ny = dy / dist;
+          const probeX = convoy.x + nx * 70, probeY = convoy.y + ny * 70;
+          let avoidX = 0, avoidY = 0;
+          for (const wall of walls) {
+            if (circleRect(probeX, probeY, 40, wall)) {
+              // push perpendicular to wall normal
+              const wx = wall.x + wall.w/2, wy = wall.y + wall.h/2;
+              const pvx = convoy.y - wy, pvy = -(convoy.x - wx);
+              const pm = Math.hypot(pvx, pvy) || 1;
+              avoidX += pvx/pm * 1.8; avoidY += pvy/pm * 1.8;
+            }
+          }
+          const mvx = nx + avoidX, mvy = ny + avoidY;
+          const mm = Math.hypot(mvx, mvy) || 1;
+          const targetAngle = Math.atan2(mvy, mvx);
           let angleDiff = targetAngle - convoy.angle;
           while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
           while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
           convoy.angle += angleDiff * Math.min(1, dt * 4);
-          convoy.x += (dx / dist) * spd;
-          convoy.y += (dy / dist) * spd;
+          convoy.x += (mvx/mm) * spd;
+          convoy.y += (mvy/mm) * spd;
         }
       } else {
         // 목표 도착
@@ -9544,9 +9563,14 @@
 
       const vX = vault.x + vault.w/2, vY = vault.y + vault.h/2;
       const destPlatform = spawnPlatforms.find(p => p.team === destroyerTeam);
-      const waypoints = destroyerTeam === 0
-        ? [{x:vX,y:vY},{x:2200,y:1200},{x:1100,y:1200},{x:(destPlatform?destPlatform.x:300),y:(destPlatform?destPlatform.y:1200)}]
-        : [{x:vX,y:vY},{x:1100,y:1200},{x:2200,y:1200},{x:(destPlatform?destPlatform.x:3000),y:(destPlatform?destPlatform.y:1200)}];
+      // Lane3 corridor at y=1554 has doors on both base walls — convoy must follow this path
+      const laneY = 1554;
+      const blueGateX = 742;   // just past BLUE base door (x=700, w=42)
+      const redGateX  = 2558;  // just before RED base door (x=2558, w=42)
+      const dp = destPlatform || {x: destroyerTeam===0 ? 420 : 2880, y: laneY};
+      const waypoints = destroyerTeam === 0  // BLUE destroyed RED vault → convoy from RED vault to BLUE spawn
+        ? [{x:vX,y:vY},{x:vX,y:laneY},{x:redGateX,y:laneY},{x:1650,y:laneY},{x:blueGateX,y:laneY},{x:dp.x,y:laneY}]
+        : [{x:vX,y:vY},{x:vX,y:laneY},{x:blueGateX,y:laneY},{x:1650,y:laneY},{x:redGateX,y:laneY},{x:dp.x,y:laneY}];
 
       // 시네마틱 카메라 초기화: 현재 플레이어 위치에서 시작
       cinematicCamera = {
@@ -9653,12 +9677,17 @@
 
       // === 카메라 타겟 전환 ===
       if (tt < 8) {
-        // Phase 0-8s: stay on vault explosion
+        // Phase 0-8s: vault explosion
         cinematicCamera.targetX = c.vX;
         cinematicCamera.targetY = c.vY;
         cinematicCamera.lerpSpeed = 3.5;
-      } else if (tt >= 8) {
-        // Phase 8s+: lerp back to player
+      } else if (tt < 18 && convoy && convoy.alive) {
+        // Phase 8-18s: follow convoy so player can see it moving
+        cinematicCamera.targetX = convoy.x;
+        cinematicCamera.targetY = convoy.y;
+        cinematicCamera.lerpSpeed = 2.5;
+      } else {
+        // Phase 18s+: return to player
         cinematicCamera.targetX = player.x;
         cinematicCamera.targetY = player.y;
         cinematicCamera.lerpSpeed = 1.8;
@@ -11150,7 +11179,7 @@
       const z = camera.zoom;
       const t = Date.now() * 0.001;
       const sx = screenX(convoy.x), sy = screenY(convoy.y);
-      if (sx < -200 || sx > width + 200) return;
+      if (sx < -300 || sx > width + 300 || sy < -300 || sy > height + 300) return;
 
       // 배기연기 업데이트
       for (let i = convoySmoke.length - 1; i >= 0; i--) {
@@ -11163,7 +11192,7 @@
       convoyWheelAngle += (90 / 12) * 0.016 * 57.3;
 
       const isBlue = convoy.team === 0;
-      const sw = 120 * z, sh = 70 * z;
+      const sw = 160 * z, sh = 95 * z;
       const teamRgb = isBlue ? "20,80,180" : "180,40,40";
       const plateRgb = isBlue ? "35,65,110" : "110,35,30";
       const hlRgb = isBlue ? "55,100,160" : "160,55,45";

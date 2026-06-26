@@ -161,11 +161,11 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 129 | HAWK 스킬 직선 발사 | `skillActive` 블록 — 7방향 산탄(±38°) → 단발 직선, 데미지 28→44, cooldown 0.055→0.081 |
 | 130 | 조준선 제거 | `drawAimLaser()` 호출 제거 (함수 정의는 유지) |
 | 131 | 플레이어 폭탄 사거리 | `throwBomb()` — range 140 → Math.min(190, d) (AI와 동일)
+| 132 | 카메라 부드러운 lerp 추적 | `updateCamera()` — 이동 중 baseFollow=7.5, 정지 시 13, 리스폰 4.5; `1 - Math.exp(-base*dt)` 공식으로 프레임 독립적 추적 |
 
 ## 미구현 (요청됨)
 - 브롤스타즈식 사선 시야
 - 주소창 숨기기
-- 카메라 추적속도 개선
 
 ## 작업 후 반드시 할 것
 수정이 끝나면 이 CLAUDE.md의 **"현재 적용된 수정사항"** 표를 업데이트하고 push할 것.

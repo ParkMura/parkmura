@@ -199,6 +199,16 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 167 | 시네마틱 충격파 링 | drawCinematic() vault_explode — 이중 충격파 + convoy_appear 목적지 화살표 + 배경 불투명도 증가 |
 | 168 | 승패 화면 킬 스코어 | drawVaultMissionOverlay() — KILLS X—X 표시 |
 | 169 | convoy 각도 부드러운 lerp | updateConvoy() — angleDiff 최단경로 회전, dt*4 속도 |
+| 170 | 시네마틱 카메라 | cinematicCamera 객체 — vault/파괴자/공터/플레이어 순서로 lerp 패닝, updateCamera() override |
+| 171 | drawSpawnPlatforms 재설계 | 헥사패턴+경고스트라이프+8착지마커+3맥동링+글로우코어+SPAWN텍스트 |
+| 172 | drawVaultsWorld 재설계 | 금속본체+강철바5개+다이얼+금괴3개+경고라이트+스캔라인+금고파티클+HP바 |
+| 173 | drawTurretsWorld 재설계 | 헥사곤아머+더블배럴+센서글로우+에너지링+발사이펙트+터렛연기 |
+| 174 | drawConvoyWorld 재설계 | 바퀴회전+사선아머+화물칸+헤드라이트+배기연기+HP바+CONVOY텍스트 |
+| 175 | startVaultCinematic 재작성 | cinematicCamera 초기화, goldBars 비산, armorPieceAnims 12피스, maxDuration 30초 |
+| 176 | updateCinematic 재작성 | 레터박스, 금괴물리, 방호복피스애니, 3단계폭발(3.0/3.3/3.6/4.0s), 카메라타겟전환 타임라인 |
+| 177 | drawCinematic 재작성 | 금괴비산, 방호복피스이징, 대형자막, 화물로딩바, 카운트다운3-2-1-GO!, 레터박스 |
+| 178 | screenWhiteFlash 이펙트 | 전체화면 흰색 플래시 — 금고 폭발(0.7), 방호복장착(0.85) 시 발동 |
+| 179 | 터렛 발사 이펙트 | turret.fireFlash=0.12 — 더블배럴 황금 불꽃 이펙트 |
 
 ## 미구현 (요청됨)
 - 주소창 숨기기

@@ -9922,134 +9922,83 @@
       walls.length=0; doors.length=0; props.length=0; fixtures.length=0;
       const W=world.w, H=world.h, t=42, mX=W/2, mY=H/2;
 
-      // ── 외벽 ──
+      // ── 외벽
       addWall(0,0,W,t); addWall(0,H-t,W,t);
       addWall(0,0,t,H); addWall(W-t,0,t,H);
 
-      // ── 기지벽 (4도어 시스템) ──
-      // 맵 비율: bx=700, 4개 도어(높이 H*0.10씩) 균등 배치
-      const bx=700;
-      // Wall 구조: [wall][door1][wall][door2][wall][door3][wall][door4][wall]
-      // 비율: 0.18 / 0.10 / 0.13 / 0.10 / 0.07 / 0.10 / 0.13 / 0.10 / 0.09 = 1.00
-      const dh=Math.round(H*0.10); // 도어 높이
+      // ── 기지벽: 4도어 (양팀 대칭)
+      const bx=700, dh=Math.round(H*0.12);
       function addBaseDoors(bx2) {
-        addWall(bx2,t,          t, Math.round(H*0.18));
-        addDoor(bx2,t+Math.round(H*0.18), t, dh, "v");          // 도어1 (최상단)
-        addWall(bx2,t+Math.round(H*0.28), t, Math.round(H*0.13));
-        addDoor(bx2,t+Math.round(H*0.41), t, dh, "v");          // 도어2 (상단중앙)
-        addWall(bx2,t+Math.round(H*0.51), t, Math.round(H*0.07));
-        addDoor(bx2,t+Math.round(H*0.58), t, dh, "v");          // 도어3 (하단중앙) ← 스폰 라인
-        addWall(bx2,t+Math.round(H*0.68), t, Math.round(H*0.13));
-        addDoor(bx2,t+Math.round(H*0.81), t, dh, "v");          // 도어4 (최하단)
-        addWall(bx2,t+Math.round(H*0.91), t, H-t-t-Math.round(H*0.91));
+        addWall(bx2, t,                          t, Math.round(H*0.16));
+        addDoor(bx2, t+Math.round(H*0.16),       t, dh, "v");   // 도어1
+        addWall(bx2, t+Math.round(H*0.28),       t, Math.round(H*0.15));
+        addDoor(bx2, t+Math.round(H*0.43),       t, dh, "v");   // 도어2
+        addWall(bx2, t+Math.round(H*0.55),       t, Math.round(H*0.10));
+        addDoor(bx2, t+Math.round(H*0.65),       t, dh, "v");   // 도어3
+        addWall(bx2, t+Math.round(H*0.77),       t, Math.round(H*0.15));
+        addDoor(bx2, t+Math.round(H*0.92),       t, dh, "v");   // 도어4
+        addWall(bx2, t+Math.round(H*0.92)+dh,    t, H-t-(t+Math.round(H*0.92)+dh));
       }
-      addBaseDoors(bx);               // BLUE 기지벽
-      addBaseDoors(W-bx-t);           // RED 기지벽 (대칭)
+      addBaseDoors(bx);
+      addBaseDoors(W-bx-t);
 
-      const c = t; // 벽 두께
+      const c=t;
+      // 도어 중심 Y (4개 레인)
+      const lane1Y = Math.round(t + H*0.16 + dh/2);   // ≈ 518
+      const lane2Y = Math.round(t + H*0.43 + dh/2);   // ≈ 1118
+      const lane3Y = Math.round(t + H*0.65 + dh/2);   // ≈ 1634
+      const lane4Y = Math.round(t + H*0.92 + dh/2);   // ≈ 2350 → 클램프 필요 없이 ok
 
-      // ────────────────────────────────────────────────
-      // ── 중앙 요새 (Central Fortress) ──
-      // 십자 + 내부 4개 소형 엄폐물
-      // ────────────────────────────────────────────────
-      // ── 중앙 요새: 십자 + 내부 방 ──
-      const fw=70, fa=240; // 팔 길이 축소(320→240): 양측 우회로 확보
-      // 북쪽 암
-      addWall(mX-fw/2, mY-fa-fw, fw, fa);
-      // 남쪽 암
-      addWall(mX-fw/2, mY+fw,    fw, fa);
-      // 서쪽 암
-      addWall(mX-fa-fw, mY-fw/2, fa, fw);
-      // 동쪽 암
-      addWall(mX+fw,    mY-fw/2, fa, fw);
-      // 요새 내부 코너 블록 (아군/적 엄폐)
-      const ci=90;
-      addWall(mX-ci-c, mY-ci-c, c, c);
-      addWall(mX+ci,   mY-ci-c, c, c);
-      addWall(mX-ci-c, mY+ci,   c, c);
-      addWall(mX+ci,   mY+ci,   c, c);
-      // 중앙 오브젝티브 마커 (장식용 소형 블록)
-      addWall(mX-c/2, mY-c/2, c, c);
-
-      // ────────────────────────────────────────────────
-      // ── 4개 레인 엄폐 구조물 ──
-      // ────────────────────────────────────────────────
-      // 레인 Y좌표 (도어 중심)
-      const lane1Y = Math.round(t + H*0.18 + dh/2);  // ~594
-      const lane2Y = Math.round(t + H*0.41 + dh/2);  // ~1026+120=1146
-      const lane3Y = Math.round(t + H*0.58 + dh/2);  // ~1434+120=1554 (스폰)
-      const lane4Y = Math.round(t + H*0.81 + dh/2);  // ~1986+120=2106
-
-      // 각 레인에 대칭 엄폐물 (L형 기지측 + 중앙 분리형)
-      function addLaneCover(ly, flip) {
-        // 좌측 기지 앞 L형
-        const lx1 = bx + t + 240;
-        addWall(lx1, ly-c*3-100, c, 100);
-        addWall(lx1, ly+c*3,     c, 100);
-        addWall(lx1, ly-c*2,     flip ? c : 100, c);
-        // 우측 기지 앞 L형 (대칭)
-        const rx2 = W - bx - t - t - 240;
-        addWall(rx2, ly-c*3-100, c, 100);
-        addWall(rx2, ly+c*3,     c, 100);
-        addWall(rx2-(flip?0:100)+c, ly-c*2, 100, c);
-        // 중앙 레인 분리형 엄폐물 — 갭(250px)이 있어 AI 통과 가능
-        addWall(mX-300,  ly-c/2, 110, c);   // 좌측 짧은 벽
-        addWall(mX+190,  ly-c/2, 110, c);   // 우측 짧은 벽 (중간 갭 80px)
-      }
-      addLaneCover(lane1Y, false);
-      addLaneCover(lane2Y, true);
-      addLaneCover(lane3Y, false);
-      addLaneCover(lane4Y, true);
-
-      // ────────────────────────────────────────────────
-      // ── 미드필드 복합 엄폐물 (좌우 대칭) ──
-      // ────────────────────────────────────────────────
-      const midX1 = Math.round(bx + t + (mX - bx - t) * 0.45);  // 좌 미드 (≈1175)
-      const midX2 = W - midX1 - c;                                // 우 미드 대칭
-
-      // 좌측 미드 복합 - C자형 (아래쪽 열림)
-      addWall(midX1-120, mY-c/2, 240, c);  // 수평
-      addWall(midX1-120, mY-200, c,   200); // 좌수직
-      addWall(midX1+120-c, mY-200, c, 200); // 우수직
-
-      // 우측 미드 복합 - 역C자형 (위쪽 열림)
-      addWall(midX2-120, mY-c/2, 240, c);  // 수평
-      addWall(midX2-120, mY,     c,   200); // 좌수직
-      addWall(midX2+120-c, mY,   c,   200); // 우수직
-
-      // ── 상단 사이드 룸 (레인1↔2 사이) ──
-      const sideRoomY1 = Math.round((lane1Y + lane2Y) / 2);  // 레인1과2 중간
-      addWall(mX-380, sideRoomY1-c/2, 200, c);
-      addWall(mX+180, sideRoomY1-c/2, 200, c);
-      addWall(mX-380, sideRoomY1-160, c,  160);
-      addWall(mX+380-c, sideRoomY1-160, c, 160);
-
-      // ── 하단 사이드 룸 (레인3↔4 사이) ──
-      const sideRoomY2 = Math.round((lane3Y + lane4Y) / 2);  // 레인3과4 중간
-      addWall(mX-380, sideRoomY2-c/2, 200, c);
-      addWall(mX+180, sideRoomY2-c/2, 200, c);
-      addWall(mX-380, sideRoomY2,     c,   160);
-      addWall(mX+380-c, sideRoomY2,   c,   160);
-
-      // ── 기지 앞 엄폐 기둥 (각 레인 입구) ──
-      const pillarOff = 280;
-      [lane1Y, lane2Y, lane3Y, lane4Y].forEach(ly => {
-        addWall(bx+t+pillarOff-c/2, ly-80, c, 160);       // BLUE쪽 기지 앞 기둥
-        addWall(W-bx-t-pillarOff-c/2, ly-80, c, 160);     // RED쪽 기지 앞 기둥
+      // ── 기지 앞 기둥 (레인 입구 엄폐)
+      [lane1Y,lane2Y,lane3Y,lane4Y].forEach(ly=>{
+        addWall(bx+t+220-c/2, ly-70, c, 140);
+        addWall(W-bx-t-220-c/2, ly-70, c, 140);
       });
 
-      // ────────────────────────────────────────────────
-      // ── convoy S자 경로 장벽 (3개 수직 장벽, 갭 교대) ──
-      // 수송차가 직선으로 갈 수 없도록 강제 지그재그
-      // Bar1 (x=1050): 갭 하단 (convoy가 아래쪽으로 우회)
-      addWall(1050, t,    42, 1503);       // y=42~1545
-      addWall(1050, 1885, 42, H-1885-t);  // y=1885~2358
-      // Bar2 (x=1710): 갭 상단 (convoy가 위쪽으로 우회)
-      addWall(1710, t,    42, 373);        // y=42~415
-      addWall(1710, 755,  42, H-755-t);   // y=755~2358
-      // Bar3 (x=2250): 갭 하단 (convoy가 다시 아래쪽으로 우회)
-      addWall(2250, t,    42, 1503);       // y=42~1545
-      addWall(2250, 1885, 42, H-1885-t);  // y=1885~2358
+      // ── 중앙 큰 십자 요새 (convoy A*가 우회)
+      // 팔 길이 fa=280, 팔 폭 fw=80 → 중앙 코어 80x80
+      const fa=280, fw=80;
+      addWall(mX-fw/2, mY-fa-fw, fw, fa);   // 북
+      addWall(mX-fw/2, mY+fw,    fw, fa);   // 남
+      addWall(mX-fa-fw, mY-fw/2, fa, fw);   // 서
+      addWall(mX+fw,    mY-fw/2, fa, fw);   // 동
+
+      // ── convoy 지그재그 유도 섬 장애물 (부분 벽, AI 우회 가능)
+      // 가로 240px × 세로 240px의 박스형 섬 4개 (대칭 배치)
+      // convoy A*가 이 섬들을 돌아가며 자연스럽게 지그재그 발생
+      // 섬A (좌-하): 기지와 요새 사이, convoy가 이 섬 아래를 돌아감
+      const isA_x = Math.round(mX - 620), isA_y = Math.round(mY - 380);
+      addWall(isA_x,        isA_y,        240, c);    // 상변
+      addWall(isA_x,        isA_y,        c,   240);  // 좌변
+      addWall(isA_x+240-c,  isA_y,        c,   240);  // 우변
+      // 아래 열림 → convoy/AI가 아래쪽으로 통과
+
+      // 섬B (좌-상): 섬A 위쪽, convoy가 이 섬 위를 돌아감
+      const isB_x = Math.round(mX - 320), isB_y = Math.round(mY + 140);
+      addWall(isB_x,        isB_y+240-c,  240, c);    // 하변
+      addWall(isB_x,        isB_y,        c,   240);  // 좌변
+      addWall(isB_x+240-c,  isB_y,        c,   240);  // 우변
+      // 위 열림 → convoy/AI가 위쪽으로 통과
+
+      // 섬C (우-하): 섬A의 우측 대칭 (convoy가 이 섬 아래를 돌아감)
+      const isC_x = W - isA_x - 240, isC_y = isA_y;
+      addWall(isC_x,        isC_y,        240, c);
+      addWall(isC_x,        isC_y,        c,   240);
+      addWall(isC_x+240-c,  isC_y,        c,   240);
+
+      // 섬D (우-상): 섬B의 우측 대칭
+      const isD_x = W - isB_x - 240, isD_y = isB_y;
+      addWall(isD_x,        isD_y+240-c,  240, c);
+      addWall(isD_x,        isD_y,        c,   240);
+      addWall(isD_x+240-c,  isD_y,        c,   240);
+
+      // ── 미드필드 소형 엄폐물 (레인2↔3 사이, 좌우 대칭)
+      const mf1x = Math.round(bx + t + (mX-bx-t)*0.4);   // ≈ 1115
+      const mf2x = W - mf1x - c;
+      addWall(mf1x-70, mY-c/2, 140, c);   // 수평
+      addWall(mf1x-70, mY-160, c,   160); // 왼 수직
+      addWall(mf2x-70, mY-c/2, 140, c);
+      addWall(mf2x+70-c, mY-160, c, 160); // 오른 수직 (역방향)
 
       usingCustomMap=true;
     }

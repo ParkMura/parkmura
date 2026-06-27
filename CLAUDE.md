@@ -215,6 +215,8 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 183 | convoy A* 길찾기 | buildConvoyGrid()+findConvoyPath() — 64px 그리드, 28px 마진, 8방향 A*, max 3000iter; stuckTimer>0.6s 재경로 탐색 |
 | 184 | convoy MRAP 군용 장갑차 재설계 | drawConvoyWorld() — 사다리꼴 차체(앞좁고 뒤넓음), 4바퀴 회전, 헤드라이트/테일라이트, 루프해치, 안테나LED, 통기구, 금장트림, 팀색 줄무늬, HP바 |
 | 185 | convoy 연기 파티클 update 이동 | updateConvoy(dt) — 연기 생성+물리를 draw에서 update로 이동, convoyWheelAngle+=dt*5.5 |
+| 186 | 팀배틀 맵 균형 재설계 | buildTeamBattleMap() — S커브 전고 장벽 3개 제거(AI 진영 이동 불가 버그), 240x240 섬형 장애물 4개(일면 개방) + 중앙 대형 십자 요새(fa=280, fw=80) + 레인 입구 기둥 + 미드필드 소형 엄폐물, convoy A*가 섬 장애물 우회하며 지그재그 이동 |
+| 187 | Online Battle JOIN 버그 수정 | handleOnlineLobbyClick() — JOIN 클릭 시 role="tbclient_wait" → "tbclient"로 통일, tbclient 블록에 !mp.connected 가드로 코드입력 UI 정상 표시 |
 
 ## 미구현 (요청됨)
 - 주소창 숨기기

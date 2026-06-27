@@ -12514,7 +12514,7 @@
         const jRect={x:width/2+gap/2,    y:height*0.35-bh/2, w:bw, h:bh};
         const backRect={x:width/2-70, y:height*0.85, w:140, h:40};
         if (inRect(x,y,hRect)) { initTBHost(); return; }
-        if (inRect(x,y,jRect)) { mp.role="tbclient_wait"; return; }
+        if (inRect(x,y,jRect)) { mp.role="tbclient"; return; }
         if (inRect(x,y,backRect)) { resetTBOnline(); state="menu"; return; }
 
       } else if (mp.role === "tbhost") {
@@ -12540,8 +12540,8 @@
           tbLobbyMyTeam=1; broadcastTBLobby();
         }
 
-      } else if (mp.role === "tbclient_wait") {
-        // 코드 입력 패드
+      } else if (mp.role === "tbclient") {
+        // 코드 입력 패드 (연결 전)
         if (!mp.connected) {
           const padStartY=height*0.38;
           const bsz=Math.min(54,width*0.09), gap=Math.min(12,width*0.02);
@@ -12555,10 +12555,9 @@
               else if (n!=="OK"&&mp.codeInput.length<4) { mp.codeInput+=n; }
             }
           });
+          return;
         }
-
-      } else if (mp.role === "tbclient") {
-        // 캐릭터/팀 선택
+        // 캐릭터/팀 선택 (연결 후)
         const cw=Math.min(90,width*0.15), ch2=Math.min(46,height*0.075), gap=8;
         const totalW=(cw+gap)*4-gap;
         const baseY=height*0.49;

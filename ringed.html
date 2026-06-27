@@ -9625,33 +9625,37 @@
       // 바퀴 회전
       convoyWheelAngle += dt * 5.5;
 
-      // 웨이포인트 이동
+      // 웨이포인트 이동 (A*가 경로 보장 — moveCircle 제거, 직접 이동)
       if (convoy.waypointIdx < convoy.waypoints.length) {
         const wp = convoy.waypoints[convoy.waypointIdx];
         const dx = wp.x - convoy.x, dy = wp.y - convoy.y;
         const dist = Math.hypot(dx, dy);
-        if (dist < 40) {
+        if (dist < 48) {
           convoy.waypointIdx++;
           convoy.stuckTimer = 0;
+          convoy.lastDist = null;
         } else {
-          const spd = 45 * dt;
+          const spd = 50 * dt;
           const nx = dx / dist, ny = dy / dist;
           const targetAngle = Math.atan2(ny, nx);
           let angleDiff = targetAngle - convoy.angle;
           while (angleDiff >  Math.PI) angleDiff -= Math.PI * 2;
           while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-          convoy.angle += angleDiff * Math.min(1, dt * 5);
-          const prevX = convoy.x, prevY = convoy.y;
-          moveCircle(convoy, nx * spd, ny * spd);
-          const moved = Math.hypot(convoy.x - prevX, convoy.y - prevY);
-          if (moved < spd * 0.25) {
+          convoy.angle += angleDiff * Math.min(1, dt * 6);
+          // A*가 경로를 보장하므로 직접 이동 (벽 충돌 검사 없음)
+          convoy.x = clamp(convoy.x + nx * spd, 40, world.w - 40);
+          convoy.y = clamp(convoy.y + ny * spd, 40, world.h - 40);
+          // 거리가 줄지 않으면 stuck — A* 재탐색
+          const prevDist = convoy.lastDist || dist;
+          convoy.lastDist = dist;
+          if (dist >= prevDist - 0.5) {
             convoy.stuckTimer = (convoy.stuckTimer || 0) + dt;
           } else {
-            convoy.stuckTimer = Math.max(0, (convoy.stuckTimer || 0) - dt * 3);
-          }
-          // 0.25초 이상 막히면 A* 경로 재탐색
-          if ((convoy.stuckTimer || 0) > 0.25) {
             convoy.stuckTimer = 0;
+          }
+          if ((convoy.stuckTimer || 0) > 1.5) {
+            convoy.stuckTimer = 0;
+            convoy.lastDist = null;
             const finalWp = convoy.waypoints[convoy.waypoints.length - 1];
             const newPath = findConvoyPath(convoy.x, convoy.y, finalWp.x, finalWp.y);
             if (newPath && newPath.length > 0) {

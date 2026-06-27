@@ -9507,8 +9507,9 @@
       const cols = Math.ceil(world.w / cs) + 1;
       const rows = Math.ceil(world.h / cs) + 1;
       const blocked = new Uint8Array(cols * rows);
-      const margin = 28;
+      const margin = 52; // convoy r=35 + safety buffer
       for (const wall of walls) {
+        if (wall.isDoor) continue; // 문은 막힌 셀로 취급하지 않음
         const x0 = Math.max(0, Math.floor((wall.x - margin) / cs));
         const x1 = Math.min(cols - 1, Math.ceil((wall.x + wall.w + margin) / cs));
         const y0 = Math.max(0, Math.floor((wall.y - margin) / cs));
@@ -9522,23 +9523,38 @@
 
     function findConvoyPath(fromX, fromY, toX, toY) {
       const { blocked, cols, rows, cs } = buildConvoyGrid();
-      const sc = clamp(Math.floor(fromX / cs), 0, cols - 1);
-      const sr = clamp(Math.floor(fromY / cs), 0, rows - 1);
-      const gc = clamp(Math.floor(toX / cs), 0, cols - 1);
-      const gr = clamp(Math.floor(toY / cs), 0, rows - 1);
       const key = (c, r) => r * cols + c;
+      // 시작/끝이 막힌 셀이면 가장 가까운 빈 셀로 스냅
+      function snapToFree(wx, wy) {
+        let c = clamp(Math.floor(wx / cs), 0, cols - 1);
+        let r = clamp(Math.floor(wy / cs), 0, rows - 1);
+        if (!blocked[key(c, r)]) return [c, r];
+        for (let rad = 1; rad <= 6; rad++) {
+          for (let dc = -rad; dc <= rad; dc++) for (let dr = -rad; dr <= rad; dr++) {
+            if (Math.abs(dc) !== rad && Math.abs(dr) !== rad) continue;
+            const nc = clamp(c + dc, 0, cols - 1), nr = clamp(r + dr, 0, rows - 1);
+            if (!blocked[key(nc, nr)]) return [nc, nr];
+          }
+        }
+        return [c, r];
+      }
+      const [sc, sr] = snapToFree(fromX, fromY);
+      const [gc, gr] = snapToFree(toX, toY);
       const startK = key(sc, sr), goalK = key(gc, gr);
       const gScore = new Float32Array(cols * rows).fill(Infinity);
       gScore[startK] = 0;
-      const parent = new Int32Array(cols * rows).fill(-1);
-      const open = [startK];
+      const fScore = new Float32Array(cols * rows).fill(Infinity);
       const heuristic = (c, r) => Math.abs(c - gc) + Math.abs(r - gr);
+      fScore[startK] = heuristic(sc, sr);
+      const parent = new Int32Array(cols * rows).fill(-1);
+      // 간단한 min-heap 대신 open set을 Set으로 관리해 중복 방지
+      const openSet = new Set([startK]);
       const dirs = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
       let iterations = 0;
-      while (open.length > 0 && iterations++ < 3000) {
-        open.sort((a, b) => (gScore[a] + heuristic(a % cols, (a / cols) | 0)) -
-                             (gScore[b] + heuristic(b % cols, (b / cols) | 0)));
-        const cur = open.shift();
+      while (openSet.size > 0 && iterations++ < 5000) {
+        // fScore 최소 노드 선택
+        let cur = -1, bestF = Infinity;
+        for (const k of openSet) { if (fScore[k] < bestF) { bestF = fScore[k]; cur = k; } }
         if (cur === goalK) {
           const path = [];
           let k = cur;
@@ -9550,6 +9566,7 @@
           path.push({ x: toX, y: toY });
           return path;
         }
+        openSet.delete(cur);
         const cc = cur % cols, cr = (cur / cols) | 0;
         for (const [dc, dr] of dirs) {
           const nc = cc + dc, nr = cr + dr;
@@ -9560,8 +9577,9 @@
           const ng = gScore[cur] + step;
           if (ng < gScore[nk]) {
             gScore[nk] = ng;
+            fScore[nk] = ng + heuristic(nc, nr);
             parent[nk] = cur;
-            open.push(nk);
+            openSet.add(nk);
           }
         }
       }
@@ -9573,6 +9591,17 @@
       convoy.hitFlash = Math.max(0, convoy.hitFlash - dt);
       convoy.invuln  = Math.max(0, convoy.invuln  - dt);
       if (!convoy.goldLoaded) return;
+
+      // goldLoaded 직후 A*로 전체 경로 재계산 (하드코딩 waypoint 교체)
+      if (!convoy.pathComputed) {
+        convoy.pathComputed = true;
+        const dest = convoy.waypoints[convoy.waypoints.length - 1];
+        const astarPath = findConvoyPath(convoy.x, convoy.y, dest.x, dest.y);
+        if (astarPath && astarPath.length > 0) {
+          convoy.waypoints = astarPath;
+          convoy.waypointIdx = 0;
+        }
+      }
 
       // 연기 파티클 생성 + 업데이트
       if (convoy.waypointIdx < convoy.waypoints.length && Math.random() < 0.35) {
@@ -9620,13 +9649,14 @@
           } else {
             convoy.stuckTimer = Math.max(0, (convoy.stuckTimer || 0) - dt * 3);
           }
-          // 0.6초 이상 막히면 A* 경로 재탐색
-          if ((convoy.stuckTimer || 0) > 0.6) {
+          // 0.25초 이상 막히면 A* 경로 재탐색
+          if ((convoy.stuckTimer || 0) > 0.25) {
             convoy.stuckTimer = 0;
             const finalWp = convoy.waypoints[convoy.waypoints.length - 1];
             const newPath = findConvoyPath(convoy.x, convoy.y, finalWp.x, finalWp.y);
             if (newPath && newPath.length > 0) {
-              convoy.waypoints = convoy.waypoints.slice(0, convoy.waypointIdx).concat(newPath);
+              convoy.waypoints = newPath;
+              convoy.waypointIdx = 0;
             }
           }
         }

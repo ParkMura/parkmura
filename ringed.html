@@ -9508,15 +9508,20 @@
       const rows = Math.ceil(world.h / cs) + 1;
       const blocked = new Uint8Array(cols * rows);
       const margin = 52; // convoy r=35 + safety buffer
-      for (const wall of walls) {
-        if (wall.isDoor) continue; // 문은 막힌 셀로 취급하지 않음
-        const x0 = Math.max(0, Math.floor((wall.x - margin) / cs));
-        const x1 = Math.min(cols - 1, Math.ceil((wall.x + wall.w + margin) / cs));
-        const y0 = Math.max(0, Math.floor((wall.y - margin) / cs));
-        const y1 = Math.min(rows - 1, Math.ceil((wall.y + wall.h + margin) / cs));
+      function markBlocked(rx, ry, rw, rh) {
+        const x0 = Math.max(0, Math.floor((rx - margin) / cs));
+        const x1 = Math.min(cols - 1, Math.ceil((rx + rw + margin) / cs));
+        const y0 = Math.max(0, Math.floor((ry - margin) / cs));
+        const y1 = Math.min(rows - 1, Math.ceil((ry + rh + margin) / cs));
         for (let r = y0; r <= y1; r++)
-          for (let c = x0; c <= x1; c++)
-            blocked[r * cols + c] = 1;
+          for (let c2 = x0; c2 <= x1; c2++)
+            blocked[r * cols + c2] = 1;
+      }
+      for (const wall of walls) markBlocked(wall.x, wall.y, wall.w, wall.h);
+      for (const prop of props) {
+        if (prop.type !== 'crate') continue;
+        const cr = propCollisionRect(prop);
+        markBlocked(cr.x, cr.y, cr.w, cr.h);
       }
       return { blocked, cols, rows, cs };
     }
@@ -9592,11 +9597,10 @@
       convoy.invuln  = Math.max(0, convoy.invuln  - dt);
       if (!convoy.goldLoaded) return;
 
-      // goldLoaded 직후 A*로 전체 경로 재계산 (하드코딩 waypoint 교체)
+      // goldLoaded 직후 A*로 전체 경로 계산
       if (!convoy.pathComputed) {
         convoy.pathComputed = true;
-        const dest = convoy.waypoints[convoy.waypoints.length - 1];
-        const astarPath = findConvoyPath(convoy.x, convoy.y, dest.x, dest.y);
+        const astarPath = findConvoyPath(convoy.x, convoy.y, convoy.destX, convoy.destY);
         if (astarPath && astarPath.length > 0) {
           convoy.waypoints = astarPath;
           convoy.waypointIdx = 0;
@@ -9674,8 +9678,7 @@
           if ((convoy.stuckTimer || 0) > 1.5) {
             convoy.stuckTimer = 0;
             convoy.prevDist = null;
-            const finalWp = convoy.waypoints[convoy.waypoints.length - 1];
-            const newPath = findConvoyPath(convoy.x, convoy.y, finalWp.x, finalWp.y);
+            const newPath = findConvoyPath(convoy.x, convoy.y, convoy.destX, convoy.destY);
             if (newPath && newPath.length > 0) {
               convoy.waypoints = newPath;
               convoy.waypointIdx = 0;
@@ -9882,13 +9885,17 @@
         convoyMaterializeT = Math.min(1, c.timer / 1.5);
         if (c.timer >= 2.0 && !c.convoySpawned) {
           c.convoySpawned = true;
+          const destPlat = spawnPlatforms.find(p => p.team === c.destroyerTeam);
+          const destX = destPlat ? destPlat.x : (c.destroyerTeam === 0 ? 300 : 3000);
+          const destY = destPlat ? destPlat.y : 1200;
           convoy = {
             x: c.vX, y: c.vY, team: c.destroyerTeam,
             hp: 3000, maxHp: 3000, angle: 0,
             r: 35, w: 120, h: 70, alive: true,
-            waypoints: c.waypoints, waypointIdx: 0,
+            waypoints: [{ x: destX, y: destY }], waypointIdx: 0,
+            destX, destY,
             goldLoaded: false, reachedBase: false,
-            hitFlash: 0, invuln: 3.0
+            hitFlash: 0, invuln: 3.0, pathComputed: false
           };
           addShockRing(c.vX, c.vY, convoy.team === 0 ? "#4488FF" : "#FF4444", 100, 0.8, 3);
         }
@@ -10030,6 +10037,19 @@
         addWall(bx+t+pillarOff-c/2, ly-80, c, 160);       // BLUE쪽 기지 앞 기둥
         addWall(W-bx-t-pillarOff-c/2, ly-80, c, 160);     // RED쪽 기지 앞 기둥
       });
+
+      // ────────────────────────────────────────────────
+      // ── convoy S자 경로 장벽 (3개 수직 장벽, 갭 교대) ──
+      // 수송차가 직선으로 갈 수 없도록 강제 지그재그
+      // Bar1 (x=1050): 갭 하단 (convoy가 아래쪽으로 우회)
+      addWall(1050, t,    42, 1503);       // y=42~1545
+      addWall(1050, 1885, 42, H-1885-t);  // y=1885~2358
+      // Bar2 (x=1710): 갭 상단 (convoy가 위쪽으로 우회)
+      addWall(1710, t,    42, 373);        // y=42~415
+      addWall(1710, 755,  42, H-755-t);   // y=755~2358
+      // Bar3 (x=2250): 갭 하단 (convoy가 다시 아래쪽으로 우회)
+      addWall(2250, t,    42, 1503);       // y=42~1545
+      addWall(2250, 1885, 42, H-1885-t);  // y=1885~2358
 
       usingCustomMap=true;
     }

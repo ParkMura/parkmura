@@ -9629,7 +9629,7 @@
       // 바퀴 회전
       convoyWheelAngle += dt * 5.5;
 
-      // 웨이포인트 이동 (A* 경로 + 벽 반발력 + moveCircle 물리 충돌)
+      // 웨이포인트 이동 (A* 경로 + moveEnemySmart 스타일 벽 슬라이딩)
       if (convoy.waypointIdx < convoy.waypoints.length) {
         const wp = convoy.waypoints[convoy.waypointIdx];
         const dx = wp.x - convoy.x, dy = wp.y - convoy.y;
@@ -9639,43 +9639,45 @@
           convoy.stuckTimer = 0;
           convoy.prevDist = null;
         } else {
-          const spd = 50;
+          const spd = 55;
           const nx = dx / dist, ny = dy / dist;
-          // 8방향 레이캐스트로 벽 반발력 계산 (근접 벽에서 밀어냄)
-          let repX = 0, repY = 0;
-          const repRadius = 70;
-          for (let i = 0; i < 8; i++) {
-            const ang = (i / 8) * Math.PI * 2;
-            const rx = Math.cos(ang), ry = Math.sin(ang);
-            const d = rayBlockDistance(convoy.x, convoy.y, rx, ry, repRadius);
-            if (d < repRadius) {
-              const str = Math.pow((repRadius - d) / repRadius, 2) * 2.2;
-              repX -= rx * str;
-              repY -= ry * str;
-            }
+
+          // AI 캐릭터와 동일한 벽 슬라이딩 방식 (moveEnemySmart 패턴)
+          const beforeX = convoy.x, beforeY = convoy.y;
+          moveCircle(convoy, nx * spd * dt, ny * spd * dt);
+          const moved = Math.hypot(convoy.x - beforeX, convoy.y - beforeY);
+
+          if (moved < spd * dt * 0.3) {
+            // 직선 이동 막힘 → 수직 방향 중 더 열린 쪽으로 슬라이딩
+            convoy.x = beforeX;
+            convoy.y = beforeY;
+            const perpA = { x: -ny, y:  nx };
+            const perpB = { x:  ny, y: -nx };
+            const clearA = rayBlockDistance(convoy.x, convoy.y, perpA.x, perpA.y, 140);
+            const clearB = rayBlockDistance(convoy.x, convoy.y, perpB.x, perpB.y, 140);
+            const side = clearA >= clearB ? perpA : perpB;
+            moveCircle(convoy, (nx * 0.28 + side.x * 0.9) * spd * dt,
+                               (ny * 0.28 + side.y * 0.9) * spd * dt);
           }
-          // 목표 방향 + 반발력 혼합 → 정규화
-          let mvx = nx + repX, mvy = ny + repY;
-          const mag = Math.hypot(mvx, mvy) || 1;
-          mvx /= mag; mvy /= mag;
-          // 차량 각도 업데이트
-          const targetAngle = Math.atan2(mvy, mvx);
-          let angleDiff = targetAngle - convoy.angle;
-          while (angleDiff >  Math.PI) angleDiff -= Math.PI * 2;
-          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-          convoy.angle += angleDiff * Math.min(1, dt * 5);
-          // moveCircle로 물리 충돌 유지 (벽 관통 방지)
-          moveCircle(convoy, mvx * spd * dt, mvy * spd * dt);
-          // stuck 감지: 목표까지 거리가 줄지 않을 때 카운트
-          const prevDist = (convoy.prevDist != null) ? convoy.prevDist : dist + 1;
+
+          // 차량 각도: 실제 이동 방향 추적
+          const actualDx = convoy.x - beforeX, actualDy = convoy.y - beforeY;
+          if (Math.hypot(actualDx, actualDy) > 0.01) {
+            let angleDiff = Math.atan2(actualDy, actualDx) - convoy.angle;
+            while (angleDiff >  Math.PI) angleDiff -= Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+            convoy.angle += angleDiff * Math.min(1, dt * 4);
+          }
+
+          // stuck 감지 (여유 있게 3초)
+          const prevDist = convoy.prevDist != null ? convoy.prevDist : dist + 2;
           convoy.prevDist = dist;
-          if (dist >= prevDist - 1.0) {
+          if (dist >= prevDist - 0.5) {
             convoy.stuckTimer = (convoy.stuckTimer || 0) + dt;
           } else {
             convoy.stuckTimer = Math.max(0, (convoy.stuckTimer || 0) - dt * 2);
           }
-          // 1.5초 이상 stuck → A* 재탐색
-          if ((convoy.stuckTimer || 0) > 1.5) {
+          if ((convoy.stuckTimer || 0) > 3.0) {
             convoy.stuckTimer = 0;
             convoy.prevDist = null;
             const newPath = findConvoyPath(convoy.x, convoy.y, convoy.destX, convoy.destY);

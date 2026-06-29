@@ -3521,9 +3521,12 @@
           if (isInDoorApproach(ai, door)) requestedByEnemy = true;
           if (isInDoorHoldZone(ai, door)) holdingEnemy = true;
         }
-        // Convoy triggers doors too
+        // Convoy triggers doors too (with larger range since convoy.r=35 > door.range=34)
         if (convoy && convoy.alive && convoy.goldLoaded) {
+          const savedRange = door.range;
+          door.range = Math.max(door.range, convoy.r + 25);
           if (isInDoorApproach(convoy, door)) requestedByEnemy = true;
+          door.range = savedRange;
           if (isInDoorHoldZone(convoy, door)) holdingEnemy = true;
         }
         const requested = requestedByPlayer || requestedByEnemy;
@@ -10525,6 +10528,21 @@
               }
             } else if (target.isFacility) {
               target.fac.hp = Math.max(0, target.fac.hp - Math.round(wDmg * 0.7));
+            } else if (target.isConvoy && convoy && convoy.alive && convoy.invuln <= 0 && convoy.team !== ai.team) {
+              convoy.hp = Math.max(0, convoy.hp - wDmg);
+              convoy.hitFlash = 0.18;
+              burst(tx2, ty2, "#cc8822", 4);
+              addFloatText(Math.round(wDmg), tx2, ty2, "#ffaa44", 12);
+              if (convoy.hp <= 0) {
+                convoy.alive = false;
+                const winTeam = 1 - convoy.team;
+                vaultMissionResult = (winTeam === playerTeam) ? "win" : "lose";
+                teamBattleWon = vaultMissionResult;
+                burst(convoy.x, convoy.y, "#ff4422", 35);
+                addShockRing(convoy.x, convoy.y, "#ff6622", 350, 0.8, 5);
+                screenKillFlash = 0.7;
+                playTone(220, 0.6, 0.5);
+              }
             }
           }
         }

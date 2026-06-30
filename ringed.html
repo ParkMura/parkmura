@@ -1271,8 +1271,8 @@
       return Number.isFinite(rect.x) && Number.isFinite(rect.y) && Number.isFinite(rect.w) && Number.isFinite(rect.h) && rect.w > 0 && rect.h > 0;
     }
 
-    function addWall(x, y, w, h) {
-      walls.push({ x, y, w, h });
+    function addWall(x, y, w, h, opts) {
+      walls.push({ x, y, w, h, thin: !!(opts && opts.thin) });
     }
 
     function addDoor(x, y, w, h, axis) {
@@ -9510,21 +9510,22 @@
       const cols = Math.ceil(world.w / cs) + 1;
       const rows = Math.ceil(world.h / cs) + 1;
       const blocked = new Uint8Array(cols * rows);
-      const margin = 52; // convoy r=35 + safety buffer
-      function markBlocked(rx, ry, rw, rh) {
-        const x0 = Math.max(0, Math.floor((rx - margin) / cs));
-        const x1 = Math.min(cols - 1, Math.ceil((rx + rw + margin) / cs));
-        const y0 = Math.max(0, Math.floor((ry - margin) / cs));
-        const y1 = Math.min(rows - 1, Math.ceil((ry + rh + margin) / cs));
+      const margin = 52;     // convoy r=35 + safety buffer (큰 구조물용)
+      const thinMargin = 6;  // 엄폐용 기둥/소형 장애물 — 플레이어 스케일 통로를 막지 않도록 최소 여유만 적용
+      function markBlocked(rx, ry, rw, rh, m) {
+        const x0 = Math.max(0, Math.floor((rx - m) / cs));
+        const x1 = Math.min(cols - 1, Math.floor((rx + rw + m - 0.001) / cs));
+        const y0 = Math.max(0, Math.floor((ry - m) / cs));
+        const y1 = Math.min(rows - 1, Math.floor((ry + rh + m - 0.001) / cs));
         for (let r = y0; r <= y1; r++)
           for (let c2 = x0; c2 <= x1; c2++)
             blocked[r * cols + c2] = 1;
       }
-      for (const wall of walls) markBlocked(wall.x, wall.y, wall.w, wall.h);
+      for (const wall of walls) markBlocked(wall.x, wall.y, wall.w, wall.h, wall.thin ? thinMargin : margin);
       for (const prop of props) {
         if (prop.type !== 'crate') continue;
         const cr = propCollisionRect(prop);
-        markBlocked(cr.x, cr.y, cr.w, cr.h);
+        markBlocked(cr.x, cr.y, cr.w, cr.h, margin);
       }
       return { blocked, cols, rows, cs };
     }
@@ -9954,10 +9955,10 @@
       const lane3Y = Math.round(t + H*0.65 + dh/2);   // ≈ 1634
       const lane4Y = Math.round(t + H*0.92 + dh/2);   // ≈ 2350 → 클램프 필요 없이 ok
 
-      // ── 기지 앞 기둥 (레인 입구 엄폐)
+      // ── 기지 앞 기둥 (레인 입구 엄폐) — convoy(r=35)가 지나갈 여유를 위해 높이 축소 + A* 그리드에서 얇은 장애물로 취급
       [lane1Y,lane2Y,lane3Y,lane4Y].forEach(ly=>{
-        addWall(bx+t+220-c/2, ly-70, c, 140);
-        addWall(W-bx-t-220-c/2, ly-70, c, 140);
+        addWall(bx+t+220-c/2, ly-45, c, 90, {thin:true});
+        addWall(W-bx-t-220-c/2, ly-45, c, 90, {thin:true});
       });
 
       // ── 중앙 큰 십자 요새 (convoy A*가 우회)
@@ -10000,10 +10001,10 @@
       // ── 미드필드 소형 엄폐물 (레인2↔3 사이, 좌우 대칭)
       const mf1x = Math.round(bx + t + (mX-bx-t)*0.4);   // ≈ 1115
       const mf2x = W - mf1x - c;
-      addWall(mf1x-70, mY-c/2, 140, c);   // 수평
-      addWall(mf1x-70, mY-160, c,   160); // 왼 수직
-      addWall(mf2x-70, mY-c/2, 140, c);
-      addWall(mf2x+70-c, mY-160, c, 160); // 오른 수직 (역방향)
+      addWall(mf1x-70, mY-c/2, 140, c, {thin:true});   // 수평
+      addWall(mf1x-70, mY-160, c,   160, {thin:true}); // 왼 수직
+      addWall(mf2x-70, mY-c/2, 140, c, {thin:true});
+      addWall(mf2x+70-c, mY-160, c, 160, {thin:true}); // 오른 수직 (역방향)
 
       usingCustomMap=true;
     }

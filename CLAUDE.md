@@ -217,6 +217,8 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 185 | convoy 연기 파티클 update 이동 | updateConvoy(dt) — 연기 생성+물리를 draw에서 update로 이동, convoyWheelAngle+=dt*5.5 |
 | 186 | 팀배틀 맵 균형 재설계 | buildTeamBattleMap() — S커브 전고 장벽 3개 제거(AI 진영 이동 불가 버그), 240x240 섬형 장애물 4개(일면 개방) + 중앙 대형 십자 요새(fa=280, fw=80) + 레인 입구 기둥 + 미드필드 소형 엄폐물, convoy A*가 섬 장애물 우회하며 지그재그 이동 |
 | 187 | Online Battle JOIN 버그 수정 | handleOnlineLobbyClick() — JOIN 클릭 시 role="tbclient_wait" → "tbclient"로 통일, tbclient 블록에 !mp.connected 가드로 코드입력 UI 정상 표시 |
+| 188 | convoy 도어 범위/AI 데미지 버그 수정 | addDoor() 도어 판정 범위 보정 + AI 총격이 convoy에 정상 데미지 적용되도록 수정 (이전 세션: convoy가 무적처럼 보이던 문제 해결) |
+| 189 | convoy 벽 끼임 완전 수정 (A* 길찾기 불능 근본원인) | buildConvoyGrid()의 markBlocked() — x1/y1 계산이 Math.ceil() 사용으로 마진 확장된 모서리마다 64px 그리드 셀 1개씩 과다 차단되던 버그를 Math.floor((..-0.001)/cs)로 수정; 레인 입구 기둥/미드필드 엄폐물에 thin:true 태그 추가(margin 52→6px)로 좁은 통로 보존, 기둥 높이 140→90px 축소. A*가 두 방향 모두 정상 경로 탐색(p1len/p2len null→40/41), 5단계 검증(직접 A* 호출, 90초 고속 시뮬레이션, 14회 견고성 테스트, 실제 시네마틱+AI 전투 파이프라인, 실시간 스크린샷)으로 양방향 모두 벽 끼임 없이 목적지 도달 확인 |
 
 ## 미구현 (요청됨)
 - 주소창 숨기기

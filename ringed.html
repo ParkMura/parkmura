@@ -291,8 +291,8 @@
     const neutralObj = { active: false, timer: 45, capTeam: -1, capProgress: 0, x: 0, y: 0, idleTimer: 0 };
     // 각 팀 점령지(기지) 구역을 피해 맵 여러 곳 중 무작위 위치를 고른다
     function pickNeutralObjSpot() {
-      const marginX = 900;  // 좌우 기지 점유 구역 회피
-      const marginY = 160;
+      const marginX = 750;  // 좌우 기지 점유 구역 회피
+      const marginY = 250;
       for (let tries = 0; tries < 24; tries++) {
         const x = marginX + Math.random() * (world.w - marginX * 2);
         const y = marginY + Math.random() * (world.h - marginY * 2);
@@ -935,6 +935,7 @@
     }
 
     function resetWorld() {
+      world.w = 3300; world.h = 2400; // 클래식 모드 기본 크기 (팀배틀이 바꿔놓은 값 복원)
       player.x = 1100;
       player.y = 690;
       player.hp = gameMode === "teambattle" ? playerChar.tbHp : Math.round(100 * playerChar.hpMult);
@@ -2387,9 +2388,9 @@
           playerRespawnTimer -= dt;
           if (playerRespawnTimer <= 0) {
             playerRespawnTimer = 0;
-            const spawnY = Math.round(42 + world.h * 0.63);
-            player.x = playerTeam === 0 ? 420 : world.w - 420;
-            player.y = spawnY;
+            const Lr = tbMapLayout();
+            player.x = playerTeam === 0 ? Lr.blueSpawnCX : Lr.redSpawnCX;
+            player.y = Lr.laneMidY;
             player.hp = playerChar.tbHp;
             player.invuln = 2.5;
             bullets.length = 0;
@@ -9428,26 +9429,44 @@
       if (x>=red.x  && x<=red.x+red.w   && y>=red.y  && y<=red.y+red.h)  { playerTeam=1; startTeamBattle(); return; }
     }
 
+    // 팀배틀 맵 레이아웃 — 모든 팀배틀 관련 함수(맵/금고/스폰/터렛/수송차경로/오브젝티브)가
+    // 이 함수 하나만 참조하도록 통일해서 좌표가 서로 어긋나는 버그를 방지한다.
+    // 참고: Overwatch 계열 Escort/Payload 맵의 "스폰룸 + 3레인 + 중앙 오픈 플라자" 구조,
+    //       CS/Valorant의 "레인 입구 코너 엄폐" 구조를 2D 탑다운으로 재해석.
+    function tbMapLayout() {
+      const W = world.w, H = world.h, t = 42;
+      const bx = 560; // 기지벽(자책존 깊이) 위치
+      const laneTopY = Math.round(H * 0.22);
+      const laneMidY = Math.round(H * 0.50); // = 수송차 기본 진행 라인
+      const laneBotY = Math.round(H * 0.78);
+      return {
+        W, H, t, bx,
+        laneTopY, laneMidY, laneBotY,
+        blueVaultCX: t + 160, redVaultCX: W - t - 160,
+        blueSpawnCX: bx - 160, redSpawnCX: W - bx + 160,
+      };
+    }
+
     function startTeamBattle() {
       ensureAudio();
       gameMode = "teambattle";
       resetWorld();
+      world.w = 3600; world.h = 2000; // 팀배틀 전용 맵 크기 (클래식 모드와 분리)
       buildTeamBattleMap();
-      // 스폰: 하단 중앙 도어(Door 3) 중심 y = 42 + H*0.58 + H*0.05 = 42 + H*0.63
-      const spawnY = Math.round(42 + world.h * 0.63);
-      if (playerTeam===0) { player.x=420; player.y=spawnY; player.angle=0; }
-      else                { player.x=world.w-420; player.y=spawnY; player.angle=Math.PI; }
+      const L = tbMapLayout();
+      if (playerTeam===0) { player.x=L.blueSpawnCX; player.y=L.laneMidY; player.angle=0; }
+      else                { player.x=L.redSpawnCX;  player.y=L.laneMidY; player.angle=Math.PI; }
       player.hp = playerChar.tbHp;
       // 금고(Vault)로 재정의 — facilities 완전 교체
       facilities.length=0;
-      facilities.push({ x:360, y:1454, w:120, h:200, hp:3000, maxHp:3000, team:0,
+      facilities.push({ x:L.blueVaultCX-60, y:L.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:0,
         isVault:true, destroyed:false, destroyerTeam:null, glowPhase:0 });
-      facilities.push({ x:2820, y:1454, w:120, h:200, hp:3000, maxHp:3000, team:1,
+      facilities.push({ x:L.redVaultCX-60, y:L.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:1,
         isVault:true, destroyed:false, destroyerTeam:null, glowPhase:Math.PI });
       // 리스폰 플랫폼, 터렛, convoy 초기화
       spawnPlatforms = [
-        { x:420, y:1554, r:140, team:0, glowPhase:0 },
-        { x:2880, y:1554, r:140, team:1, glowPhase:Math.PI }
+        { x:L.blueSpawnCX, y:L.laneMidY, r:110, team:0, glowPhase:0 },
+        { x:L.redSpawnCX,  y:L.laneMidY, r:110, team:1, glowPhase:Math.PI }
       ];
       turrets = [];
       setupTurrets();
@@ -9477,11 +9496,12 @@
     }
 
     function setupTurrets() {
+      const L = tbMapLayout();
       turrets = [
-        { x:240,  y:1400, team:0, hp:400, maxHp:400, angle:0, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
-        { x:240,  y:1620, team:0, hp:400, maxHp:400, angle:0, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
-        { x:3060, y:1400, team:1, hp:400, maxHp:400, angle:Math.PI, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
-        { x:3060, y:1620, team:1, hp:400, maxHp:400, angle:Math.PI, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 }
+        { x:L.blueVaultCX, y:L.laneTopY, team:0, hp:400, maxHp:400, angle:Math.PI/2,  shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
+        { x:L.blueVaultCX, y:L.laneBotY, team:0, hp:400, maxHp:400, angle:-Math.PI/2, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
+        { x:L.redVaultCX,  y:L.laneTopY, team:1, hp:400, maxHp:400, angle:Math.PI/2,  shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
+        { x:L.redVaultCX,  y:L.laneBotY, team:1, hp:400, maxHp:400, angle:-Math.PI/2, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 }
       ];
     }
 
@@ -9622,29 +9642,28 @@
     // 매치마다 서로 다른 느낌의 경로가 나오도록 5가지 경로안 중 하나를 무작위로 골라
     // 그 경로안의 경유점들을 순서대로 A*로 이어붙인다 (경유점 자체는 항상 도어/통로 근처라 안전).
     function computeConvoyRoute(fromX, fromY, toX, toY) {
-      const H = world.h, t = 42;
-      const dh = Math.round(H * 0.12);
-      const laneYs = [
-        Math.round(t + H * 0.16 + dh / 2),
-        Math.round(t + H * 0.43 + dh / 2),
-        Math.round(t + H * 0.65 + dh / 2),
-        Math.round(t + H * 0.92 + dh / 2),
-      ];
-      const bxL = 700 + t + 20;           // 좌측 기지벽 통과 직후
-      const bxR = world.w - 700 - t - 20; // 우측 기지벽 통과 직전
-      const midX = world.w / 2;
+      const L = tbMapLayout();
+      const laneYs = [L.laneTopY, L.laneMidY, L.laneBotY];
+      const bxL = L.bx + L.t + 20;           // 좌측 기지벽 통과 직후
+      const bxR = L.W - L.bx - L.t - 20;     // 우측 기지벽 통과 직전
+      const midX = L.W / 2;
 
       const routeIdx = Math.floor(Math.random() * 5);
       let vias;
-      if (routeIdx < 4) {
+      if (routeIdx < 3) {
         const ly = laneYs[routeIdx];
         vias = [{ x: bxL, y: ly }, { x: midX, y: ly }, { x: bxR, y: ly }];
-      } else {
-        // 5번째 경로: 레인2→레인3으로 갈아타는 지그재그 경로
-        const ly1 = laneYs[1], ly2 = laneYs[2];
+      } else if (routeIdx === 3) {
+        // 4번째 경로: 상단 레인 → 중앙 레인으로 갈아타는 지그재그
         vias = [
-          { x: bxL, y: ly1 }, { x: midX - 400, y: ly1 },
-          { x: midX, y: ly2 }, { x: midX + 400, y: ly2 }, { x: bxR, y: ly2 },
+          { x: bxL, y: L.laneTopY }, { x: midX - 400, y: L.laneTopY },
+          { x: midX, y: L.laneMidY }, { x: midX + 400, y: L.laneMidY }, { x: bxR, y: L.laneMidY },
+        ];
+      } else {
+        // 5번째 경로: 중앙 레인 → 하단 레인으로 갈아타는 지그재그
+        vias = [
+          { x: bxL, y: L.laneMidY }, { x: midX - 400, y: L.laneMidY },
+          { x: midX, y: L.laneBotY }, { x: midX + 400, y: L.laneBotY }, { x: bxR, y: L.laneBotY },
         ];
       }
       if (fromX > toX) vias = vias.slice().reverse();
@@ -9789,14 +9808,15 @@
 
       const vX = vault.x + vault.w/2, vY = vault.y + vault.h/2;
       const destPlatform = spawnPlatforms.find(p => p.team === destroyerTeam);
-      // Lane3 corridor at y=1554 has doors on both base walls — convoy must follow this path
-      const laneY = 1554;
-      const blueGateX = 742;   // just past BLUE base door (x=700, w=42)
-      const redGateX  = 2558;  // just before RED base door (x=2558, w=42)
-      const dp = destPlatform || {x: destroyerTeam===0 ? 420 : 2880, y: laneY};
+      // 중앙 레인(laneMidY)이 양쪽 기지벽 도어를 모두 지나는 기본 경로 — 시네마틱 카메라 연출용 참고 경로
+      const Lc = tbMapLayout();
+      const laneY = Lc.laneMidY;
+      const blueGateX = Lc.bx + Lc.t;   // BLUE 기지벽 도어 통과 직후
+      const redGateX  = Lc.W - Lc.bx - Lc.t; // RED 기지벽 도어 통과 직전
+      const dp = destPlatform || {x: destroyerTeam===0 ? Lc.blueSpawnCX : Lc.redSpawnCX, y: laneY};
       const waypoints = destroyerTeam === 0  // BLUE destroyed RED vault → convoy from RED vault to BLUE spawn
-        ? [{x:vX,y:vY},{x:vX,y:laneY},{x:redGateX,y:laneY},{x:1650,y:laneY},{x:blueGateX,y:laneY},{x:dp.x,y:laneY}]
-        : [{x:vX,y:vY},{x:vX,y:laneY},{x:blueGateX,y:laneY},{x:1650,y:laneY},{x:redGateX,y:laneY},{x:dp.x,y:laneY}];
+        ? [{x:vX,y:vY},{x:vX,y:laneY},{x:redGateX,y:laneY},{x:Lc.W/2,y:laneY},{x:blueGateX,y:laneY},{x:dp.x,y:laneY}]
+        : [{x:vX,y:vY},{x:vX,y:laneY},{x:blueGateX,y:laneY},{x:Lc.W/2,y:laneY},{x:redGateX,y:laneY},{x:dp.x,y:laneY}];
 
       // 시네마틱 카메라 초기화: 현재 플레이어 위치에서 시작
       cinematicCamera = {
@@ -9995,138 +10015,78 @@
 
     function buildTeamBattleMap() {
       walls.length=0; doors.length=0; props.length=0; fixtures.length=0;
-      const W=world.w, H=world.h, t=42, mX=W/2, mY=H/2;
+      const L = tbMapLayout();
+      const W=L.W, H=L.H, t=L.t, bx=L.bx, mX=W/2, mY=H/2, c=t;
+      const laneTopY=L.laneTopY, laneMidY=L.laneMidY, laneBotY=L.laneBotY;
 
       // ── 외벽
       addWall(0,0,W,t); addWall(0,H-t,W,t);
       addWall(0,0,t,H); addWall(W-t,0,t,H);
 
-      // ── 기지벽: 4도어 (양팀 대칭)
-      const bx=700, dh=Math.round(H*0.12);
-      function addBaseDoors(bx2) {
-        addWall(bx2, t,                          t, Math.round(H*0.16));
-        addDoor(bx2, t+Math.round(H*0.16),       t, dh, "v");   // 도어1
-        addWall(bx2, t+Math.round(H*0.28),       t, Math.round(H*0.15));
-        addDoor(bx2, t+Math.round(H*0.43),       t, dh, "v");   // 도어2
-        addWall(bx2, t+Math.round(H*0.55),       t, Math.round(H*0.10));
-        addDoor(bx2, t+Math.round(H*0.65),       t, dh, "v");   // 도어3
-        addWall(bx2, t+Math.round(H*0.77),       t, Math.round(H*0.15));
-        addDoor(bx2, t+Math.round(H*0.92),       t, dh, "v");   // 도어4
-        addWall(bx2, t+Math.round(H*0.92)+dh,    t, H-t-(t+Math.round(H*0.92)+dh));
+      // ── 기지벽: 3레인 도어 (Overwatch Escort류 스폰룸 — 상/중/하 3개 출구, 중앙이 수송차 기본 라인)
+      // dh는 A* 그리드 margin(52)*2 + 그리드 셀(64)보다 충분히 커야 문틈이 막힌 것으로 잘못 인식되지 않음
+      const dh = 200;
+      function addBaseDoors3(bx2) {
+        let y = t;
+        for (const ly of [laneTopY, laneMidY, laneBotY]) {
+          addWall(bx2, y, t, (ly - dh/2) - y);
+          addDoor(bx2, ly - dh/2, t, dh, "v");
+          y = ly + dh/2;
+        }
+        addWall(bx2, y, t, (H - t) - y);
       }
-      addBaseDoors(bx);
-      addBaseDoors(W-bx-t);
+      addBaseDoors3(bx);
+      addBaseDoors3(W-bx-t);
 
-      const c=t;
-      // 도어 중심 Y (4개 레인)
-      const lane1Y = Math.round(t + H*0.16 + dh/2);   // ≈ 518
-      const lane2Y = Math.round(t + H*0.43 + dh/2);   // ≈ 1118
-      const lane3Y = Math.round(t + H*0.65 + dh/2);   // ≈ 1634
-      const lane4Y = Math.round(t + H*0.92 + dh/2);   // ≈ 2350 → 클램프 필요 없이 ok
-
-      // ── 기지 앞 기둥 (레인 입구 엄폐) — convoy(r=35)가 지나갈 여유를 위해 높이 축소 + A* 그리드에서 얇은 장애물로 취급
-      [lane1Y,lane2Y,lane3Y,lane4Y].forEach(ly=>{
-        addWall(bx+t+220-c/2, ly-45, c, 90, {thin:true});
-        addWall(W-bx-t-220-c/2, ly-45, c, 90, {thin:true});
+      // ── 레인 입구 기둥 (기지 코앞 엄폐) — CS/Valorant식 코너 엄폐, convoy 통과 여유를 위해 얇은 장애물
+      [laneTopY, laneMidY, laneBotY].forEach(ly=>{
+        addWall(bx+t+200-c/2, ly-45, c, 90, {thin:true});
+        addWall(W-bx-t-200-c/2, ly-45, c, 90, {thin:true});
       });
 
-      // ── 중앙 큰 십자 요새 (convoy A*가 우회)
-      // 팔 길이 fa=280, 팔 폭 fw=80 → 중앙 코어 80x80
-      const fa=280, fw=80;
-      addWall(mX-fw/2, mY-fa-fw, fw, fa);   // 북
-      addWall(mX-fw/2, mY+fw,    fw, fa);   // 남
-      addWall(mX-fa-fw, mY-fw/2, fa, fw);   // 서
-      addWall(mX+fw,    mY-fw/2, fa, fw);   // 동
+      // ── 중앙 오픈 플라자 (파워 오브젝티브 쟁탈전용) — 큰 요새 대신 6개의 얇은 기둥을 링 형태로 배치,
+      //     완전히 막힌 곳 없이 사방에서 진입 가능 (Overwatch 점거형 포인트 룸 참고)
+      const plazaR = 260, pillarS = 50;
+      for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2;
+        addWall(Math.round(mX + Math.cos(ang)*plazaR - pillarS/2),
+                Math.round(mY + Math.sin(ang)*plazaR - pillarS/2),
+                pillarS, pillarS, {thin:true});
+      }
 
-      // ── convoy 지그재그 유도 섬 장애물 (부분 벽, AI 우회 가능)
-      // 가로 240px × 세로 240px의 박스형 섬 4개 (대칭 배치)
-      // convoy A*가 이 섬들을 돌아가며 자연스럽게 지그재그 발생
-      // 섬A (좌-하): 기지와 요새 사이, convoy가 이 섬 아래를 돌아감
-      const isA_x = Math.round(mX - 620), isA_y = Math.round(mY - 380);
-      addWall(isA_x,        isA_y,        240, c);    // 상변
-      addWall(isA_x,        isA_y,        c,   240);  // 좌변
-      addWall(isA_x+240-c,  isA_y,        c,   240);  // 우변
-      // 아래 열림 → convoy/AI가 아래쪽으로 통과
+      // ── 레인 중간 엄폐 (기지↔중앙 사이, 55% 지점, 좌우 대칭) — 상/하 레인은 중앙 쪽으로 열린 L자, 중앙 레인은 세로 기둥
+      const q1x = Math.round(bx + t + (mX - bx - t) * 0.55);
+      const q3x = W - q1x;
+      // 좌측(q1x): 상단 레인 L (아래로 열림), 하단 레인 L (위로 열림)
+      addWall(q1x-70, laneTopY,      140, c);
+      addWall(q1x-70, laneTopY,      c,   90);
+      addWall(q1x-70, laneBotY,      140, c);
+      addWall(q1x-70, laneBotY-90,   c,   90);
+      // 우측(q3x): 좌측과 좌우대칭 (세로벽이 오른쪽 끝에 붙도록)
+      addWall(q3x-70, laneTopY,      140, c);
+      addWall(q3x+70-c, laneTopY,    c,   90);
+      addWall(q3x-70, laneBotY,      140, c);
+      addWall(q3x+70-c, laneBotY-90, c,   90);
+      // 중앙 레인은 얇은 세로 기둥 한 쌍 (수송차 진행 방해 최소화)
+      addWall(q1x-c/2, laneMidY-170, c, 120, {thin:true});
+      addWall(q3x-c/2, laneMidY+50,  c, 120, {thin:true});
 
-      // 섬B (좌-상): 섬A 위쪽, convoy가 이 섬 위를 돌아감
-      const isB_x = Math.round(mX - 320), isB_y = Math.round(mY + 140);
-      addWall(isB_x,        isB_y+240-c,  240, c);    // 하변
-      addWall(isB_x,        isB_y,        c,   240);  // 좌변
-      addWall(isB_x+240-c,  isB_y,        c,   240);  // 우변
-      // 위 열림 → convoy/AI가 위쪽으로 통과
-
-      // 섬C (우-하): 섬A의 우측 대칭 (convoy가 이 섬 아래를 돌아감)
-      const isC_x = W - isA_x - 240, isC_y = isA_y;
-      addWall(isC_x,        isC_y,        240, c);
-      addWall(isC_x,        isC_y,        c,   240);
-      addWall(isC_x+240-c,  isC_y,        c,   240);
-
-      // 섬D (우-상): 섬B의 우측 대칭
-      const isD_x = W - isB_x - 240, isD_y = isB_y;
-      addWall(isD_x,        isD_y+240-c,  240, c);
-      addWall(isD_x,        isD_y,        c,   240);
-      addWall(isD_x+240-c,  isD_y,        c,   240);
-
-      // ── 미드필드 소형 엄폐물 (레인2↔3 사이, 좌우 대칭)
-      const mf1x = Math.round(bx + t + (mX-bx-t)*0.4);   // ≈ 1115
-      const mf2x = W - mf1x - c;
-      addWall(mf1x-70, mY-c/2, 140, c, {thin:true});   // 수평
-      addWall(mf1x-70, mY-160, c,   160, {thin:true}); // 왼 수직
-      addWall(mf2x-70, mY-c/2, 140, c, {thin:true});
-      addWall(mf2x+70-c, mY-160, c, 160, {thin:true}); // 오른 수직 (역방향)
-
-      // ── 하단부 추가 엄폐물 (중앙 이하 빈 공간)
-      // convoy 경로(y≈1200) 아래에만 배치 — convoy A*에 영향 없음
-
-      // 1) 하단 외곽 C형 섬 (y≈1760, 좌·우 대칭)
-      const loY = Math.round(mY + 560);  // 1760
-      const loW = 220;
-      // 좌측 C (오른쪽/중앙 방향 열림)
-      addWall(880,              loY,          loW, c);
-      addWall(880,              loY,          c,   loW);
-      addWall(880,              loY+loW-c,    loW, c);
-      // 우측 C (왼쪽/중앙 방향 열림)
-      addWall(W-880-loW,        loY,          loW, c);
-      addWall(W-880-loW+loW-c,  loY,          c,   loW);
-      addWall(W-880-loW,        loY+loW-c,    loW, c);
-
-      // 2) 하단 L형 엄폐 (y≈1720, 레인3 아래 좌·우 대칭)
-      const lcY = Math.round(mY + 520);  // 1720
-      const lcW = 160;
-      // 좌측 L (수평+왼쪽 수직)
-      addWall(mX-450,           lcY,          lcW, c);
-      addWall(mX-450,           lcY,          c,   130);
-      // 우측 L (수평+오른쪽 수직)
-      addWall(mX+450-lcW,       lcY,          lcW, c);
-      addWall(mX+450-c,         lcY,          c,   130);
-
-      // 3) 하단 미드필드 소형 엄폐 (y≈2000, 레인3↔4 사이)
-      const lmY = Math.round(mY + 800);  // 2000
-      addWall(mf1x-70, lmY, 140, c, {thin:true});
-      addWall(mf1x-70, lmY, c,   100, {thin:true});
-      addWall(mf2x-70, lmY, 140, c, {thin:true});
-      addWall(mf2x+70-c, lmY, c, 100, {thin:true});
-
-      // 4) 레인4 전방 소형 벙커 (y≈2120, 하단 레인 공략 엄폐)
-      const lbY = Math.round(mY + 920);  // 2120
-      // 좌 (수평 + 수직 상향)
-      addWall(860,              lbY,    130, c);
-      addWall(860,              lbY-90, c,   90);
-      // 우 (수평 + 수직 상향, 반전)
-      addWall(W-860-130,        lbY,    130, c);
-      addWall(W-860-130+130-c,  lbY-90, c,   90);
+      // ── 플랑크 연결 사선 엄폐 (상↔중, 중↔하 레인 사이 이동을 자연스럽게 유도)
+      addWall(Math.round(mX-520), Math.round((laneTopY+laneMidY)/2)-c/2, 110, c, {thin:true});
+      addWall(Math.round(mX+410), Math.round((laneMidY+laneBotY)/2)-c/2, 110, c, {thin:true});
+      addWall(Math.round(mX-410), Math.round((laneMidY+laneBotY)/2)-c/2, 110, c, {thin:true});
+      addWall(Math.round(mX+520), Math.round((laneTopY+laneMidY)/2)-c/2, 110, c, {thin:true});
 
       usingCustomMap=true;
     }
 
     function setupAiPlayers() {
       aiPlayers.length = 0;
-      const W = world.w, H = world.h;
-      // 기지벽 x=700 기준 — 본진 스폰 좌표
-      // BLUE 본진: x=350~580, RED 본진: x=W-580~W-350
-      const spawnY = Math.round(42 + H * 0.63); // 플레이어와 동일한 Y
-      const blueSpawnX = 430;
-      const redSpawnX  = W - 430;
+      const L = tbMapLayout();
+      // 스폰 플랫폼(중앙 레인) 기준 본진 스폰 좌표 — 플레이어와 동일한 라인
+      const spawnY = L.laneMidY;
+      const blueSpawnX = L.blueSpawnCX;
+      const redSpawnX  = L.redSpawnCX;
       const eteam = 1 - playerTeam;
       const enemyChars = [0, 1, 2, 3].filter(i => i !== playerChar.id);
       const faceAngle = eteam === 1 ? Math.PI : 0;
@@ -10191,24 +10151,28 @@
 
     function setupCrates() {
       crates.length=0;
-      const W=world.w, H=world.h, mX=W/2, mY=H/2;
-      // 새 맵(3300x2400)에 맞춰 다양한 위치에 배치
+      const L = tbMapLayout();
+      const W=L.W, mX=W/2, mY=L.H/2;
+      const laneTopY=L.laneTopY, laneMidY=L.laneMidY, laneBotY=L.laneBotY;
+      const q1x = Math.round(L.bx + L.t + (mX - L.bx - L.t) * 0.55);
+      const q3x = W - q1x;
+      const plazaR = 300;
       [
-        // 중앙 요새 주변
-        {x:mX,      y:mY-380}, {x:mX,      y:mY+380},
-        {x:mX-340,  y:mY-240}, {x:mX+340,  y:mY-240},
-        {x:mX-340,  y:mY+240}, {x:mX+340,  y:mY+240},
-        // 각 레인 중간 엄폐
-        {x:mX-600,  y:mY-680}, {x:mX+600,  y:mY-680},  // 상단 레인
-        {x:mX-600,  y:mY+680}, {x:mX+600,  y:mY+680},  // 하단 레인
-        // 미드필드
-        {x:mX-500,  y:mY-100}, {x:mX+500,  y:mY-100},
-        {x:mX-500,  y:mY+100}, {x:mX+500,  y:mY+100},
-        // 기지 앞 접근로
-        {x:1050,    y:mY-380}, {x:W-1050,  y:mY-380},
-        {x:1050,    y:mY+380}, {x:W-1050,  y:mY+380},
+        // 중앙 플라자 — 기둥 사이 틈(파워 오브젝티브 쟁탈전 픽업)
+        {x:mX+Math.cos(Math.PI/6)*plazaR,   y:mY+Math.sin(Math.PI/6)*plazaR},
+        {x:mX+Math.cos(5*Math.PI/6)*plazaR, y:mY+Math.sin(5*Math.PI/6)*plazaR},
+        {x:mX+Math.cos(7*Math.PI/6)*plazaR, y:mY+Math.sin(7*Math.PI/6)*plazaR},
+        {x:mX+Math.cos(11*Math.PI/6)*plazaR,y:mY+Math.sin(11*Math.PI/6)*plazaR},
+        // 상/하 레인 L엄폐 근처
+        {x:q1x, y:laneTopY+70}, {x:q3x, y:laneTopY+70},
+        {x:q1x, y:laneBotY-70}, {x:q3x, y:laneBotY-70},
+        // 중앙 레인 기둥 근처
+        {x:q1x, y:laneMidY-40}, {x:q3x, y:laneMidY+40},
+        // 플랑크 연결로 근처
+        {x:mX-520+150, y:Math.round((laneTopY+laneMidY)/2)},
+        {x:mX+410-150, y:Math.round((laneMidY+laneBotY)/2)},
       ]
-      .forEach(p=>crates.push({x:p.x,y:p.y,w:60,h:60,hp:280,maxHp:280,dead:false}));
+      .forEach(p=>crates.push({x:Math.round(p.x),y:Math.round(p.y),w:60,h:60,hp:280,maxHp:280,dead:false}));
     }
 
     function updateAiPlayers(dt) {
@@ -10221,12 +10185,12 @@
             ai.alive = true;
             ai.hp = ai.maxHp;
             ai.stunTimer = 0;
-            const W = world.w, H = world.h;
+            const L4 = tbMapLayout();
             // 본진(기지) 스폰 — 벽 안쪽
-            const spawnX = ai.team === 0 ? 430 : W - 430;
-            const spawnY = Math.round(42 + H * 0.63);
+            const spawnX = ai.team === 0 ? L4.blueSpawnCX : L4.redSpawnCX;
+            const spawnY = L4.laneMidY;
             ai.x = spawnX + (Math.random() - 0.5) * 80;
-            ai.y = spawnY + (Math.random() - 0.5) * 200;
+            ai.y = spawnY + (Math.random() - 0.5) * 160;
             ai.invuln = 2.0;
             ai.stk = { x: ai.x, y: ai.y, t: 0, esc: 0, escA: 0, idx: 0, stuckTotal: 0 };
             burst(ai.x, ai.y, ai.team===0 ? "#4488ff" : "#ff4444", 14);
@@ -12329,18 +12293,27 @@
       playerTeam = tbLobbyMyTeam < 0 ? 0 : tbLobbyMyTeam;
       ensureAudio();
       resetWorld();
+      world.w = 3600; world.h = 2000;
       buildTeamBattleMap();
+      const L1 = tbMapLayout();
 
       // 시설물 & 초기 배치
       facilities.length = 0;
-      facilities.push({ x:50, y:600, w:200, h:400, hp:3000, maxHp:3000, team:0 });
-      facilities.push({ x:world.w-250, y:600, w:200, h:400, hp:3000, maxHp:3000, team:1 });
+      facilities.push({ x:L1.blueVaultCX-60, y:L1.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:0,
+        isVault:true, destroyed:false, destroyerTeam:null, glowPhase:0 });
+      facilities.push({ x:L1.redVaultCX-60, y:L1.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:1,
+        isVault:true, destroyed:false, destroyerTeam:null, glowPhase:Math.PI });
+      spawnPlatforms = [
+        { x:L1.blueSpawnCX, y:L1.laneMidY, r:110, team:0, glowPhase:0 },
+        { x:L1.redSpawnCX,  y:L1.laneMidY, r:110, team:1, glowPhase:Math.PI }
+      ];
+      turrets = []; setupTurrets();
       teamBattleWon = null; tbTimer = 0;
 
       // 호스트 플레이어 위치
       player.hp = playerChar.tbHp;
-      if (playerTeam === 0) { player.x = 300; player.y = world.h/2; player.angle = 0; }
-      else { player.x = world.w-300; player.y = world.h/2; player.angle = Math.PI; }
+      if (playerTeam === 0) { player.x = L1.blueSpawnCX; player.y = L1.laneMidY; player.angle = 0; }
+      else { player.x = L1.redSpawnCX; player.y = L1.laneMidY; player.angle = Math.PI; }
 
       // 접속 클라이언트를 tbNetPlayers로 등록
       tbNetPlayers.length = 0;
@@ -12380,14 +12353,15 @@
       hCount[playerTeam]++;
       for (const np of tbNetPlayers) hCount[np.team]++;
       const offsets = [{dx:0,dy:-160},{dx:-90,dy:0},{dx:0,dy:160},{dx:90,dy:0}];
+      const L3 = tbMapLayout();
       for (let t = 0; t < 2; t++) {
         const needed = Math.max(0, 4 - hCount[t]);
-        const startX = t===0 ? 320 : world.w-320;
+        const startX = t===0 ? L3.blueSpawnCX : L3.redSpawnCX;
         let count = 0;
         for (let ci = 0; ci < CHAR_DEFS.length && count < needed; ci++) {
           const ch = CHAR_DEFS[ci];
           const o = offsets[count];
-          aiPlayers.push({ team:t, charIdx:ci, x:startX+o.dx, y:world.h/2+o.dy,
+          aiPlayers.push({ team:t, charIdx:ci, x:startX+o.dx, y:L3.laneMidY+o.dy,
             hp:ch.tbHp, maxHp:ch.tbHp, angle:t===0?0:Math.PI, speed:170*ch.speedMult,
             shootCd:Math.random()*1.2, walkTime:0, isMoving:false,
             alive:true, col:ch.col, build:ch.build, name:ch.name });
@@ -12430,18 +12404,28 @@
       if (playerTeam < 0) playerTeam = 0;
       const myEntry = d.netPlayers.find(p => p.id === myNetId);
       ensureAudio();
-      resetWorld(); buildTeamBattleMap();
+      resetWorld();
+      world.w = 3600; world.h = 2000;
+      buildTeamBattleMap();
+      const L2 = tbMapLayout();
       facilities.length = 0;
       if (d.facilities) d.facilities.forEach(f => facilities.push({...f}));
       else {
-        facilities.push({ x:50, y:600, w:200, h:400, hp:3000, maxHp:3000, team:0 });
-        facilities.push({ x:world.w-250, y:600, w:200, h:400, hp:3000, maxHp:3000, team:1 });
+        facilities.push({ x:L2.blueVaultCX-60, y:L2.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:0,
+          isVault:true, destroyed:false, destroyerTeam:null, glowPhase:0 });
+        facilities.push({ x:L2.redVaultCX-60, y:L2.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:1,
+          isVault:true, destroyed:false, destroyerTeam:null, glowPhase:Math.PI });
       }
+      spawnPlatforms = [
+        { x:L2.blueSpawnCX, y:L2.laneMidY, r:110, team:0, glowPhase:0 },
+        { x:L2.redSpawnCX,  y:L2.laneMidY, r:110, team:1, glowPhase:Math.PI }
+      ];
+      turrets = []; setupTurrets();
       teamBattleWon = null; tbTimer = 0;
       player.hp = playerChar.tbHp;
       if (myEntry) { player.x = myEntry.x; player.y = myEntry.y; }
-      else if (playerTeam===0) { player.x=300; player.y=world.h/2; }
-      else { player.x=world.w-300; player.y=world.h/2; }
+      else if (playerTeam===0) { player.x=L2.blueSpawnCX; player.y=L2.laneMidY; }
+      else { player.x=L2.redSpawnCX; player.y=L2.laneMidY; }
       player.angle = playerTeam===0 ? 0 : Math.PI;
       remoteNetPlayers.length = 0;
       d.netPlayers.forEach(p => {

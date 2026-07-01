@@ -223,6 +223,8 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 190 | 미션 클리어/실패 화면 "메인 화면으로 돌아가기" 버튼 안 보이는 버그 수정 | `vaultExitBtnRect()` — `canvas.width/canvas.height`(DPR 배율 적용된 물리 픽셀) 대신 `width/height`(CSS 논리 픽셀)로 좌표 계산하도록 수정. DPR>1인 모바일 기기에서 버튼이 화면 중앙이 아니라 화면 밖(우측 하단)으로 밀려나 보이지도, 눌리지도 않던 문제 해결 |
 | 191 | 위 버튼이 가로로 짧은 모바일 화면에서 하단에 잘리는 문제 추가 수정 | `vaultExitBtnRect()` — 버튼 y좌표를 `Math.min(cy+120, height-h-16)`로 클램프, w/h도 화면 크기에 비례하도록 축소(`width*0.7`, `height*0.16` 상한). 실제 폰과 동일한 종횡비(2340×1080, DPR 3, 터치 이벤트)로 재현 테스트하여 버튼이 화면 안에 완전히 들어오고 탭이 정상 작동함을 확인 |
 
+| 192 | HAWK/VIPER/MEDIC AIM 큰원 반지름 -5% | `mobileButtonRects()` — `attackR` id≠1(BULL) 분기에 `* 0.95` 적용, BULL은 기존 `* 0.8` 유지 |
+
 ## 미구현 (요청됨)
 - 주소창 숨기기
 

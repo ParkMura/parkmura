@@ -2017,7 +2017,7 @@
     }
 
     function updateIdleRaid(dt, playerMoved, acted) {
-      if (!specialForcesEnabled) {
+      if (gameMode === "teambattle" || !specialForcesEnabled) {
         idleRaidTimer = 0;
         idleRaidWarned = false;
         raidWarningActive = false;

@@ -2907,13 +2907,12 @@
         tbTimer += dt;
         if (isCinematic) {
           updateCinematic(dt);
-          // 시네마틱 중: AI/플레이어 게임 로직은 유지하되 convoy는 업데이트 안 함
         } else {
           updateAiPlayers(dt);
           updateTurrets(dt);
-          updateConvoy(dt);
           checkTeamBattleWin();
         }
+        updateConvoy(dt);
         if (tbOnlineMode) {
           if (mp.role === "tbhost") {
             updateTBNetPlayers(dt);

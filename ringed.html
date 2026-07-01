@@ -11734,7 +11734,7 @@
 
     function vaultExitBtnRect() {
       const cx = canvas.width/2, cy = canvas.height/2;
-      return {x: cx-100, y: cy+100, w:200, h:50};
+      return {x: cx-160, y: cy+120, w:320, h:64};
     }
 
     function drawVaultMissionOverlay() {
@@ -11792,21 +11792,37 @@
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(`KILLS  ${myKills} — ${enemyKills}`, cx, cy + cy * 0.22);
       }
-      // EXIT 버튼
+      // 메인 화면으로 버튼
       const exitBtn = vaultExitBtnRect();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#1a1a2e';
-      ctx.strokeStyle = '#ffd700';
+      const now2 = performance.now() * 0.001;
+      const pulse = 0.6 + Math.abs(Math.sin(now2 * 2.5)) * 0.4;
+      // 버튼 글로우
+      ctx.shadowColor = isWin ? '#ffd700' : '#ff4444';
+      ctx.shadowBlur = 18 * pulse;
+      ctx.fillStyle = isWin ? 'rgba(40,30,0,0.92)' : 'rgba(40,0,0,0.92)';
+      ctx.strokeStyle = isWin ? `rgba(255,215,0,${pulse})` : `rgba(255,80,80,${pulse})`;
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.rect(exitBtn.x, exitBtn.y, exitBtn.w, exitBtn.h);
+      ctx.roundRect(exitBtn.x, exitBtn.y, exitBtn.w, exitBtn.h, 8);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 22px serif';
+      // 상단 하이라이트 라인
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = isWin ? 'rgba(255,255,180,0.35)' : 'rgba(255,180,180,0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(exitBtn.x + 10, exitBtn.y + 2);
+      ctx.lineTo(exitBtn.x + exitBtn.w - 10, exitBtn.y + 2);
+      ctx.stroke();
+      // 버튼 텍스트
+      ctx.fillStyle = isWin ? '#ffd700' : '#ff6666';
+      ctx.font = `bold ${Math.round(exitBtn.h * 0.38)}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('EXIT TO MENU', exitBtn.x + exitBtn.w/2, exitBtn.y + exitBtn.h/2);
+      ctx.shadowColor = isWin ? '#ffd700' : '#ff4444';
+      ctx.shadowBlur = 10;
+      ctx.fillText('⬅  메인 화면으로 돌아가기', exitBtn.x + exitBtn.w/2, exitBtn.y + exitBtn.h/2);
+      ctx.shadowBlur = 0;
       ctx.restore();
     }
 

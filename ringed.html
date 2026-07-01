@@ -9876,6 +9876,8 @@
           c.armorEquipped = true;
           if (c.destroyerTeam === playerTeam) {
             playerArmorSuit = true; armorSuitCharId = 0;
+            player.hp = playerChar.tbHp; // 방호복 장착 시 HP 100% 회복
+            ragePrevHp = player.hp;      // rage 오발동 방지
           } else {
             for (const ai of aiPlayers) {
               if (ai.alive && ai.team === c.destroyerTeam) { ai.armorSuit = true; break; }

@@ -225,6 +225,8 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 
 | 192 | HAWK/VIPER/MEDIC AIM 큰원 반지름 -5% | `mobileButtonRects()` — `attackR` id≠1(BULL) 분기에 `* 0.95` 적용, BULL은 기존 `* 0.8` 유지 |
 
+| 193 | 수송차(convoy) 경로 5종 랜덤화 | `computeConvoyRoute()` 신설 — 4개 레인(lane1~4Y) 중 하나를 통과하는 경로 4종 + 레인2→레인3 지그재그 경로 1종, 총 5종 중 매치마다 무작위 선택. 경유점들을 `findConvoyPath()`로 순서대로 이어붙여 A* 경로 생성. `updateConvoy()`의 최초 경로 계산(`pathComputed`)에서 기존 `findConvoyPath()` 직접 호출을 대체. 20회 랜덤 시뮬레이션으로 5개 경로 모두 유효(경로 없음 없음) 확인 |
+
 ## 미구현 (요청됨)
 - 주소창 숨기기
 

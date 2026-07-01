@@ -9594,16 +9594,55 @@
       return null;
     }
 
+    // 매치마다 서로 다른 느낌의 경로가 나오도록 5가지 경로안 중 하나를 무작위로 골라
+    // 그 경로안의 경유점들을 순서대로 A*로 이어붙인다 (경유점 자체는 항상 도어/통로 근처라 안전).
+    function computeConvoyRoute(fromX, fromY, toX, toY) {
+      const H = world.h, t = 42;
+      const dh = Math.round(H * 0.12);
+      const laneYs = [
+        Math.round(t + H * 0.16 + dh / 2),
+        Math.round(t + H * 0.43 + dh / 2),
+        Math.round(t + H * 0.65 + dh / 2),
+        Math.round(t + H * 0.92 + dh / 2),
+      ];
+      const bxL = 700 + t + 20;           // 좌측 기지벽 통과 직후
+      const bxR = world.w - 700 - t - 20; // 우측 기지벽 통과 직전
+      const midX = world.w / 2;
+
+      const routeIdx = Math.floor(Math.random() * 5);
+      let vias;
+      if (routeIdx < 4) {
+        const ly = laneYs[routeIdx];
+        vias = [{ x: bxL, y: ly }, { x: midX, y: ly }, { x: bxR, y: ly }];
+      } else {
+        // 5번째 경로: 레인2→레인3으로 갈아타는 지그재그 경로
+        const ly1 = laneYs[1], ly2 = laneYs[2];
+        vias = [
+          { x: bxL, y: ly1 }, { x: midX - 400, y: ly1 },
+          { x: midX, y: ly2 }, { x: midX + 400, y: ly2 }, { x: bxR, y: ly2 },
+        ];
+      }
+      if (fromX > toX) vias = vias.slice().reverse();
+
+      const points = [{ x: fromX, y: fromY }, ...vias, { x: toX, y: toY }];
+      let fullPath = [];
+      for (let i = 0; i < points.length - 1; i++) {
+        const seg = findConvoyPath(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y);
+        if (seg && seg.length) fullPath = fullPath.concat(seg);
+      }
+      return fullPath.length ? fullPath : findConvoyPath(fromX, fromY, toX, toY);
+    }
+
     function updateConvoy(dt) {
       if (!convoy || !convoy.alive) return;
       convoy.hitFlash = Math.max(0, convoy.hitFlash - dt);
       convoy.invuln  = Math.max(0, convoy.invuln  - dt);
       if (!convoy.goldLoaded) return;
 
-      // goldLoaded 직후 A*로 전체 경로 계산
+      // goldLoaded 직후 5가지 경로안 중 하나를 무작위로 골라 전체 경로 계산
       if (!convoy.pathComputed) {
         convoy.pathComputed = true;
-        const astarPath = findConvoyPath(convoy.x, convoy.y, convoy.destX, convoy.destY);
+        const astarPath = computeConvoyRoute(convoy.x, convoy.y, convoy.destX, convoy.destY);
         if (astarPath && astarPath.length > 0) {
           convoy.waypoints = astarPath;
           convoy.waypointIdx = 0;

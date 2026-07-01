@@ -11794,7 +11794,10 @@
 
     function vaultExitBtnRect() {
       const cx = width/2, cy = height/2;
-      return {x: cx-160, y: cy+120, w:320, h:64};
+      const w = Math.min(320, width * 0.7);
+      const h = Math.min(64, height * 0.16);
+      const y = Math.min(cy + 120, height - h - 16);
+      return {x: cx - w/2, y, w, h};
     }
 
     function drawVaultMissionOverlay() {

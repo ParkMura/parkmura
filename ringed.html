@@ -10008,6 +10008,47 @@
       addWall(mf2x-70, mY-c/2, 140, c, {thin:true});
       addWall(mf2x+70-c, mY-160, c, 160, {thin:true}); // 오른 수직 (역방향)
 
+      // ── 하단부 추가 엄폐물 (중앙 이하 빈 공간)
+      // convoy 경로(y≈1200) 아래에만 배치 — convoy A*에 영향 없음
+
+      // 1) 하단 외곽 C형 섬 (y≈1760, 좌·우 대칭)
+      const loY = Math.round(mY + 560);  // 1760
+      const loW = 220;
+      // 좌측 C (오른쪽/중앙 방향 열림)
+      addWall(880,              loY,          loW, c);
+      addWall(880,              loY,          c,   loW);
+      addWall(880,              loY+loW-c,    loW, c);
+      // 우측 C (왼쪽/중앙 방향 열림)
+      addWall(W-880-loW,        loY,          loW, c);
+      addWall(W-880-loW+loW-c,  loY,          c,   loW);
+      addWall(W-880-loW,        loY+loW-c,    loW, c);
+
+      // 2) 하단 L형 엄폐 (y≈1720, 레인3 아래 좌·우 대칭)
+      const lcY = Math.round(mY + 520);  // 1720
+      const lcW = 160;
+      // 좌측 L (수평+왼쪽 수직)
+      addWall(mX-450,           lcY,          lcW, c);
+      addWall(mX-450,           lcY,          c,   130);
+      // 우측 L (수평+오른쪽 수직)
+      addWall(mX+450-lcW,       lcY,          lcW, c);
+      addWall(mX+450-c,         lcY,          c,   130);
+
+      // 3) 하단 미드필드 소형 엄폐 (y≈2000, 레인3↔4 사이)
+      const lmY = Math.round(mY + 800);  // 2000
+      addWall(mf1x-70, lmY, 140, c, {thin:true});
+      addWall(mf1x-70, lmY, c,   100, {thin:true});
+      addWall(mf2x-70, lmY, 140, c, {thin:true});
+      addWall(mf2x+70-c, lmY, c, 100, {thin:true});
+
+      // 4) 레인4 전방 소형 벙커 (y≈2120, 하단 레인 공략 엄폐)
+      const lbY = Math.round(mY + 920);  // 2120
+      // 좌 (수평 + 수직 상향)
+      addWall(860,              lbY,    130, c);
+      addWall(860,              lbY-90, c,   90);
+      // 우 (수평 + 수직 상향, 반전)
+      addWall(W-860-130,        lbY,    130, c);
+      addWall(W-860-130+130-c,  lbY-90, c,   90);
+
       usingCustomMap=true;
     }
 

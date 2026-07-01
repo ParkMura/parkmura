@@ -288,7 +288,22 @@
     let skillReadyNotified = false;
     let skillBarFlash = 0;        // 스킬 바 깜박임 타이머
     // ── 중립 오브젝티브 ──
-    const neutralObj = { active: false, timer: 45, capTeam: -1, capProgress: 0, x: 0, y: 0 };
+    const neutralObj = { active: false, timer: 45, capTeam: -1, capProgress: 0, x: 0, y: 0, idleTimer: 0 };
+    // 각 팀 점령지(기지) 구역을 피해 맵 여러 곳 중 무작위 위치를 고른다
+    function pickNeutralObjSpot() {
+      const marginX = 900;  // 좌우 기지 점유 구역 회피
+      const marginY = 160;
+      for (let tries = 0; tries < 24; tries++) {
+        const x = marginX + Math.random() * (world.w - marginX * 2);
+        const y = marginY + Math.random() * (world.h - marginY * 2);
+        let blocked = false;
+        for (const w of walls) {
+          if (x > w.x - 44 && x < w.x + w.w + 44 && y > w.y - 44 && y < w.y + w.h + 44) { blocked = true; break; }
+        }
+        if (!blocked) return { x, y };
+      }
+      return { x: world.w / 2, y: world.h / 2 };
+    }
     // ── 역전 버프 표시 ──
     const comebackMsg = { life: 0 };
     // ── 팀배틀 리스폰 + 킬 스코어 ──
@@ -999,7 +1014,8 @@
       screenDmgFlash = 0; screenKillFlash = 0;
       killStreak = 0; lastKillTime = 0; skillReadyNotified = false; skillBarFlash = 0;
       neutralObj.active = false; neutralObj.timer = 45; neutralObj.capTeam = -1;
-      neutralObj.capProgress = 0; neutralObj.x = world.w/2; neutralObj.y = world.h/2;
+      neutralObj.capProgress = 0; neutralObj.idleTimer = 0;
+      neutralObj.x = world.w/2; neutralObj.y = world.h/2;
       comebackMsg.life = 0;
 
       buildFacilityMap();
@@ -2332,15 +2348,16 @@
       if (gameMode === "teambattle") {
         neutralObj.timer -= dt;
         if (neutralObj.timer <= 0 && !neutralObj.active) {
-          neutralObj.active = true; neutralObj.timer = 0;
-          neutralObj.x = world.w/2 + (Math.random()-0.5)*200;
-          neutralObj.y = world.h/2 + (Math.random()-0.5)*200;
+          neutralObj.active = true; neutralObj.timer = 0; neutralObj.idleTimer = 0;
+          const spot0 = pickNeutralObjSpot();
+          neutralObj.x = spot0.x; neutralObj.y = spot0.y;
           neutralObj.capProgress = 0; neutralObj.capTeam = -1;
           floatingTexts.push({ text: "⚡ POWER OBJECTIVE SPAWNED!", x: neutralObj.x, y: neutralObj.y - 60, vy: -20, life: 2.5, maxLife: 2.5, size: 16, color: "#FFD700", screen: false });
         }
         if (neutralObj.active) {
           const pd = Math.hypot(player.x - neutralObj.x, player.y - neutralObj.y);
-          if (pd < 80) {
+          if (pd < 100) {
+            neutralObj.idleTimer = 0;
             neutralObj.capProgress = Math.min(1, neutralObj.capProgress + dt / 3.5);
             if (neutralObj.capProgress >= 1) {
               neutralObj.active = false; neutralObj.timer = 55;
@@ -2353,6 +2370,14 @@
             }
           } else {
             neutralObj.capProgress = Math.max(0, neutralObj.capProgress - dt * 0.5);
+            // 아무도 점령을 시도하지 않으면 60초마다 사라졌다가 다른 무작위 위치에서 재생성
+            neutralObj.idleTimer += dt;
+            if (neutralObj.idleTimer >= 60) {
+              const spot = pickNeutralObjSpot();
+              neutralObj.x = spot.x; neutralObj.y = spot.y;
+              neutralObj.capProgress = 0; neutralObj.idleTimer = 0;
+              floatingTexts.push({ text: "⚡ POWER OBJECTIVE MOVED!", x: neutralObj.x, y: neutralObj.y - 60, vy: -20, life: 2.5, maxLife: 2.5, size: 16, color: "#FFD700", screen: false });
+            }
           }
         }
         // 버프 타이머
@@ -11985,30 +12010,31 @@
         const pulse = 0.65 + 0.35 * Math.sin(t * 3.5);
         const cx = neutralObj.x, cy = neutralObj.y;
         ctx.save();
+        const gs = 1.1; // 그래픽 크기 +10%
         // 외부 발광 후광
-        const grd = ctx.createRadialGradient(cx,cy,6,cx,cy,38);
+        const grd = ctx.createRadialGradient(cx,cy,6*gs,cx,cy,38*gs);
         grd.addColorStop(0,`rgba(255,200,0,${0.55*pulse})`);
         grd.addColorStop(1,"rgba(255,150,0,0)");
-        ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(cx,cy,38,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(cx,cy,38*gs,0,Math.PI*2); ctx.fill();
         // 회전하는 외부 링
         ctx.save(); ctx.translate(cx,cy); ctx.rotate(t * 1.2);
-        ctx.strokeStyle=`rgba(255,220,50,${0.6+0.3*pulse})`; ctx.lineWidth=2.5;
-        ctx.setLineDash([8,5]);
-        ctx.beginPath(); ctx.arc(0,0,22,0,Math.PI*2); ctx.stroke();
+        ctx.strokeStyle=`rgba(255,220,50,${0.6+0.3*pulse})`; ctx.lineWidth=2.5*gs;
+        ctx.setLineDash([8*gs,5*gs]);
+        ctx.beginPath(); ctx.arc(0,0,22*gs,0,Math.PI*2); ctx.stroke();
         ctx.setLineDash([]); ctx.restore();
         // 중앙 다이아몬드
         ctx.fillStyle=`rgba(255,230,60,${0.85+0.15*pulse})`;
-        ctx.beginPath(); ctx.moveTo(cx,cy-13); ctx.lineTo(cx+10,cy); ctx.lineTo(cx,cy+13); ctx.lineTo(cx-10,cy); ctx.closePath(); ctx.fill();
-        ctx.strokeStyle="#fff"; ctx.lineWidth=1.2; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx,cy-13*gs); ctx.lineTo(cx+10*gs,cy); ctx.lineTo(cx,cy+13*gs); ctx.lineTo(cx-10*gs,cy); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle="#fff"; ctx.lineWidth=1.2*gs; ctx.stroke();
         // "⚡" 레이블
-        ctx.fillStyle="#FFD700"; ctx.font="bold 11px monospace"; ctx.textAlign="center";
-        ctx.fillText("POWER", cx, cy - 28);
+        ctx.fillStyle="#FFD700"; ctx.font=`bold ${11*gs}px monospace`; ctx.textAlign="center";
+        ctx.fillText("POWER", cx, cy - 28*gs);
         // 채널링 원형 프로그레스
         if (neutralObj.capProgress > 0) {
-          ctx.strokeStyle="rgba(80,80,80,0.7)"; ctx.lineWidth=4;
-          ctx.beginPath(); ctx.arc(cx,cy,18,-Math.PI/2,Math.PI*3/2); ctx.stroke();
-          ctx.strokeStyle="#FFD700"; ctx.lineWidth=4;
-          ctx.beginPath(); ctx.arc(cx,cy,18,-Math.PI/2,-Math.PI/2+Math.PI*2*neutralObj.capProgress); ctx.stroke();
+          ctx.strokeStyle="rgba(80,80,80,0.7)"; ctx.lineWidth=4*gs;
+          ctx.beginPath(); ctx.arc(cx,cy,18*gs,-Math.PI/2,Math.PI*3/2); ctx.stroke();
+          ctx.strokeStyle="#FFD700"; ctx.lineWidth=4*gs;
+          ctx.beginPath(); ctx.arc(cx,cy,18*gs,-Math.PI/2,-Math.PI/2+Math.PI*2*neutralObj.capProgress); ctx.stroke();
         }
         ctx.restore();
       }

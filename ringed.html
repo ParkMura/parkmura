@@ -1807,7 +1807,7 @@
       for (const enemy of missileAllTargets) {
         const d = Math.hypot(enemy.x - x, enemy.y - y);
         if (d <= radius && hasExplosionLineOfSight(x, y, enemy.x, enemy.y, d)) {
-          const dmgMi = (1800 * (1 - d / radius) + 900) * (rageActive ? 2 : 1);
+          const dmgMi = (2340 * (1 - d / radius) + 1170) * (rageActive ? 2 : 1);
           enemy.hp -= dmgMi;
           if (enemy.alive !== undefined && enemy.hp <= 0) { enemy.hp = 0; enemy.alive = false; }
           skillEnergy = Math.min(1, skillEnergy + dmgMi / 1000);
@@ -2657,7 +2657,7 @@
             ...(gameMode === "teambattle" ? aiPlayers.filter(a => a.alive && a.team !== playerTeam) : [])];
           for (const e of hmAllTargets) {
             if (Math.hypot(e.x - hm.x, e.y - hm.y) < (e.r || 22) + 4) {
-              const dmgH = 150 * (rageActive ? 2 : 1);
+              const dmgH = 195 * (rageActive ? 2 : 1);
               e.hp -= dmgH;
               if (e.alive !== undefined && e.hp <= 0) { e.hp = 0; e.alive = false; }
               skillEnergy = Math.min(1, skillEnergy + dmgH / 1000);
@@ -2701,7 +2701,7 @@
             ...(gameMode === "teambattle" ? aiPlayers.filter(a => a.alive && a.team !== playerTeam) : [])];
           for (const e of hmTargets2) {
             if (Math.hypot(e.x - hm.x, e.y - hm.y) < (e.r || 22) + 4) {
-              const dmgHM = 150 * (rageActive ? 2 : 1);
+              const dmgHM = 195 * (rageActive ? 2 : 1);
               e.hp -= dmgHM;
               if (e.alive !== undefined && e.hp <= 0) { e.hp = 0; e.alive = false; }
               skillEnergy = Math.min(1, skillEnergy + dmgHM / 1000);
@@ -2748,7 +2748,7 @@
           if (dr.hoverTimer <= 0) {
             dr.phase = "firing";
             dr.laserTimer = 0.4;
-            const dmgAmt = 200 * (rageActive ? 2 : 1);
+            const dmgAmt = 260 * (rageActive ? 2 : 1);
             const isValidEnemy = enemies.includes(dr.target) ||
               (gameMode === "teambattle" && aiPlayers.includes(dr.target) && dr.target.alive && dr.target.team !== playerTeam);
             if (isValidEnemy) {

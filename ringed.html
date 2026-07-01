@@ -10187,12 +10187,15 @@
         // convoy 우선 타겟 처리
         if (convoy && convoy.alive && convoy.goldLoaded) {
           if (convoy.team !== ai.team) {
-            // 적팀 convoy → 최우선 공격 타겟
+            // 적팀 convoy → 거리 기반 우선순위 (적과 동등 경쟁)
             const d = Math.hypot(convoy.x - ai.x, convoy.y - ai.y);
             if (d < (ai.range||680) * 1.5) {
-              target = { x: convoy.x, y: convoy.y, isConvoy: true };
-              targetId = 'convoy';
-              bestScore = 10000 - d; // 다른 타겟보다 압도적으로 높은 점수
+              const sc = -d * 0.6;
+              if (sc > bestScore) {
+                bestScore = sc;
+                target = { x: convoy.x, y: convoy.y, isConvoy: true };
+                targetId = 'convoy';
+              }
             }
           } else if (ai.isConvoyEscort) {
             // 아군 convoy 에스코트: convoy 주변에 포진하면서 적 공격

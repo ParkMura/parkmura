@@ -180,7 +180,7 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 148 | 방호복(ArmorSuit) 시스템 | playerArmorSuit/ai.armorSuit — 금고 파괴 팀 플레이어에게 자동 장착, 리스폰 유지 |
 | 149 | 방호복 외골격 렌더 | drawMarineSoldier() armorSuit 파라미터 — 황금 어깨날개+V마크 오버레이 |
 | 150 | convoy 피격 처리 | applyTBHit convoy 케이스 + bullets 직접 피격 — 폭발무효, 총기만 데미지, convoy HP 0 시 즉시 승패 결정 |
-| 151 | AI convoy 우선순위 | updateAiPlayers() — convoy.team≠ai.team: convoy를 최우선 타겟(score 10000-dist)으로 설정 |
+| 151 | AI convoy 우선순위 | updateAiPlayers() — convoy.team≠ai.team: convoy를 거리 기반으로 적과 동등 경쟁(score -d*0.6), 가까운 것 우선 |
 | 152 | 터렛 레이캐스트 피격 | raycastShot() + applyTBHit isTurret — 플레이어 총격으로 적 터렛 파괴 가능 |
 | 153 | drawSpawnPlatforms | 원형 플랫폼 렌더 — 팀색 radial gradient+맥동 링+착지 마커+중앙 BLUE/RED 텍스트 |
 | 154 | drawVaultsWorld | 금고 렌더 — 황금 글로우+TARGET 텍스트+HP바, 파괴 시 DESTROYED 표시 |

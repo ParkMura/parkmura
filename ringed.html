@@ -1685,7 +1685,7 @@
       const st = playerChar.skillType;
       if (st === "stun_aura") {
         // MEDIC: 주변 적 마취 (220px — 팀배틀 게임 밸런스)
-        const stunR = 220;
+        const stunR = 286;
         for (const e of enemies) {
           if (Math.hypot(e.x - player.x, e.y - player.y) < stunR) {
             e.slowTimer = 3.0;

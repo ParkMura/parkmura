@@ -9596,7 +9596,7 @@
     }
 
     function updateConvoy(dt) {
-      if (!convoy || !convoy.alive || isCinematic) return;
+      if (!convoy || !convoy.alive) return;
       convoy.hitFlash = Math.max(0, convoy.hitFlash - dt);
       convoy.invuln  = Math.max(0, convoy.invuln  - dt);
       if (!convoy.goldLoaded) return;
@@ -9870,9 +9870,9 @@
           screenWhiteFlash = 0.4;
           screenDmgFlash = 0.4;
         }
-        if (c.timer >= 5.5) { c.phase = "armor_equip"; c.timer = 0; }
+        if (c.timer >= 3.5) { c.phase = "armor_equip"; c.timer = 0; }
       } else if (c.phase === "armor_equip") {
-        if (c.timer >= 5.5 && !c.armorEquipped) {
+        if (c.timer >= 3.0 && !c.armorEquipped) {
           c.armorEquipped = true;
           if (c.destroyerTeam === playerTeam) {
             playerArmorSuit = true; armorSuitCharId = 0;
@@ -9888,10 +9888,10 @@
           addShockRing(c.destroyerX, c.destroyerY, "#FFFFFF", 25, 0.7, 2);
           playTone(660, 0.5, 0.5);
         }
-        if (c.timer >= 8) { c.phase = "convoy_appear"; c.timer = 0; }
+        if (c.timer >= 5.0) { c.phase = "convoy_appear"; c.timer = 0; }
       } else if (c.phase === "convoy_appear") {
         convoyMaterializeT = Math.min(1, c.timer / 1.5);
-        if (c.timer >= 2.0 && !c.convoySpawned) {
+        if (c.timer >= 1.0 && !c.convoySpawned) {
           c.convoySpawned = true;
           const destPlat = spawnPlatforms.find(p => p.team === c.destroyerTeam);
           const destX = destPlat ? destPlat.x : (c.destroyerTeam === 0 ? 300 : 3000);
@@ -9902,7 +9902,7 @@
             r: 35, w: 120, h: 70, alive: true,
             waypoints: [{ x: destX, y: destY }], waypointIdx: 0,
             destX, destY,
-            goldLoaded: false, reachedBase: false,
+            goldLoaded: true, reachedBase: false,
             hitFlash: 0, invuln: 3.0, pathComputed: false
           };
           addShockRing(c.vX, c.vY, convoy.team === 0 ? "#4488FF" : "#FF4444", 100, 0.8, 3);
@@ -9910,7 +9910,7 @@
         if (c.timer >= 3.0) {
           cargoLoadProgress = Math.min(1, (c.timer - 3.0) / 2.5);
         }
-        if (c.timer >= 7) { c.phase = "done"; c.timer = 0; }
+        if (c.timer >= 4.0) { c.phase = "done"; c.timer = 0; }
       } else if (c.phase === "done" || c.totalTimer >= c.maxDuration) {
         if (convoy) convoy.goldLoaded = true;
         cinematicState = null;

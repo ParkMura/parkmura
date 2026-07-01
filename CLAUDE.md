@@ -190,7 +190,7 @@ ParkMura/sang-sub-game 저장소의 CLAUDE.md 읽고 게임 작업 이어서 해
 | 158 | drawVaultMissionOverlay | MISSION CLEAR(폭죽)+MISSION FAILED 텍스트, 기존 VICTORY/DEFEAT 대체 |
 | 159 | 방호복 파편 렌더 버그 수정 | drawCinematic() — screenX/Y 변환으로 올바른 월드→화면 변환, life>=maxLife 조건으로 페이드 아웃 |
 | 160 | 방호복 방어 50%·공격 10% 적용 | applyTBHit()/updateAiPlayers()/bullets — playerArmorSuit/ai.armorSuit 기반 데미지 배율 실제 적용 |
-| 161 | convoy 에스코트 AI 이동 | updateAiPlayers() isConvoyEscort 블록 — convoy 주변 80px 반경 포지션 배정, 적 없을 때 에스코트 위치로 이동 |
+| 161 | convoy 에스코트 AI 이동 | updateAiPlayers() isConvoyEscort 블록 — convoy 주변 120px 반경 분산 포진, 이동=convoy 옆(항상), 사격=범위 내 적(_escortFightTarget); effTgt로 이동/사격 타겟 분리 |
 | 162 | convoy 화면 밖 화살표 | drawConvoyArrow() — convoy가 화면 밖이면 방향 화살표+CONVOY 레이블 표시 |
 | 163 | 미니맵 convoy/vault/AI 표시 | drawMinimap() — teambattle 시 vault(팀색 □), convoy(황금 △), AI(팀색 점) 미니맵에 추가 |
 | 164 | 캐릭터별 방호복 색상 | drawMarineSoldier() armorSuit 블록 — HAWK=황금, BULL=오렌지, VIPER=에메랄드, MEDIC=로즈골드 |

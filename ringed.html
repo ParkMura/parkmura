@@ -317,6 +317,7 @@
     // ─── 팀배틀 금고 미션 시스템 ─────────────────────────────
     let turrets = [];             // AI 방어 터렛
     let spawnPlatforms = [];      // 리스폰 플랫폼
+    let itemSpawners = [];        // 고정 아이템 스폰 지점 (Quake/Halo식 타이머 리스폰)
     let convoy = null;            // 수송차 객체
     let playerArmorSuit = false;  // 플레이어 방호복
     let armorSuitCharId = -1;     // 방호복 입은 캐릭터 ID (-1=없음, 0=플레이어, AI id)
@@ -1017,6 +1018,8 @@
       neutralObj.active = false; neutralObj.timer = 45; neutralObj.capTeam = -1;
       neutralObj.capProgress = 0; neutralObj.idleTimer = 0;
       neutralObj.x = world.w/2; neutralObj.y = world.h/2;
+      itemSpawners = [];
+      player.speedBoostTimer = 0; player.shieldTimer = 0;
       comebackMsg.life = 0;
 
       buildFacilityMap();
@@ -1867,7 +1870,7 @@
       if (bomb.hostile) {
         const pd = Math.hypot(player.x - bomb.x, player.y - bomb.y);
         if (pd <= radius && hasExplosionLineOfSight(bomb.x, bomb.y, player.x, player.y, pd) && player.invuln <= 0) {
-          player.hp -= 34 * (1 - pd / radius) + 16;
+          player.hp -= (34 * (1 - pd / radius) + 16) * (player.shieldTimer > 0 ? 0.5 : 1.0);
           player.invuln = 0.22;
           burst(player.x, player.y, "#9a1d18", 12);
           if (player.hp <= 0) {
@@ -2256,6 +2259,7 @@
       const sprint = !isRespawning && (keys.has("ShiftLeft") || keys.has("ShiftRight"));
       let speed = sprint && player.stamina > 0 ? 160 : 106;
       speed *= playerChar.speedMult * (rageActive ? 1.2 : 1);
+      if (player.speedBoostTimer > 0) speed *= 1.3; // SPEED 아이템 (8초)
       if (sprint && (mx || my)) player.stamina = Math.max(0, player.stamina - dt * 35);
       else player.stamina = Math.min(100, player.stamina + dt * 22);
       if ((keys.has("Space") || (isMobile && mobileControls.dodge)) && player.stamina > 25 && player.dodge <= 0 && (mx || my)) {
@@ -2383,6 +2387,10 @@
         }
         // 버프 타이머
         if (player.buffTimer > 0) { player.buffTimer -= dt; if (player.buffTimer <= 0) { player.buffTimer = 0; player.dmgBuff = 1.0; } }
+        if (player.speedBoostTimer > 0) player.speedBoostTimer = Math.max(0, player.speedBoostTimer - dt);
+        if (player.shieldTimer > 0) player.shieldTimer = Math.max(0, player.shieldTimer - dt);
+        // 고정 아이템 스폰 지점 리스폰
+        updateItemSpawners(dt);
         // 리스폰 타이머
         if (playerRespawnTimer > 0) {
           playerRespawnTimer -= dt;
@@ -2572,7 +2580,7 @@
             // 플레이어가 적팀인 경우
             if (player.hp > 0 && playerTeam !== b.team && player.invuln <= 0) {
               if (Math.hypot(b.x - player.x, b.y - player.y) < player.r + 6) {
-                const _turretArmorMult = playerArmorSuit ? 0.5 : 1.0;
+                const _turretArmorMult = (playerArmorSuit ? 0.5 : 1.0) * (player.shieldTimer > 0 ? 0.5 : 1.0);
                 player.hp = Math.max(0, player.hp - (b.dmg || 28) * _turretArmorMult);
                 player.invuln = 0.08;
                 shake = Math.max(shake, 4);
@@ -3096,8 +3104,23 @@
         p.life -= dt;
         p.pulse += dt * 5;
         if (dist2(player.x, player.y, p.x, p.y) < (player.r + p.r) * (player.r + p.r)) {
-          { const mhp = gameMode==="teambattle" ? playerChar.tbHp : Math.round(100*playerChar.hpMult); player.hp = Math.min(mhp, player.hp + Math.round(mhp*0.2)); }
-          burst(p.x, p.y, "#8edc8f", 10);
+          if (p.type === "speed") {
+            player.speedBoostTimer = 8;
+            floatingTexts.push({ text: "⚡ SPEED UP!", x: p.x, y: p.y - 40, vy: -30, life: 1.5, maxLife: 1.5, size: 15, color: "#44bbff", screen: false });
+            burst(p.x, p.y, "#44bbff", 12);
+          } else if (p.type === "energy") {
+            skillEnergy = Math.min(1, skillEnergy + 0.5);
+            skillBarFlash = 1;
+            floatingTexts.push({ text: "⚡ ENERGY +50%", x: p.x, y: p.y - 40, vy: -30, life: 1.5, maxLife: 1.5, size: 15, color: "#cc66ff", screen: false });
+            burst(p.x, p.y, "#cc66ff", 12);
+          } else if (p.type === "shield") {
+            player.shieldTimer = 8;
+            floatingTexts.push({ text: "🛡 SHIELD!", x: p.x, y: p.y - 40, vy: -30, life: 1.5, maxLife: 1.5, size: 15, color: "#33ffee", screen: false });
+            burst(p.x, p.y, "#33ffee", 12);
+          } else {
+            const mhp = gameMode==="teambattle" ? playerChar.tbHp : Math.round(100*playerChar.hpMult); player.hp = Math.min(mhp, player.hp + Math.round(mhp*0.2));
+            burst(p.x, p.y, "#8edc8f", 10);
+          }
           pickups.splice(i, 1);
         } else if (p.life <= 0) {
           pickups.splice(i, 1);
@@ -5052,6 +5075,7 @@
       drawFixtureBodies();
       drawCorpses();
       drawDeathTexts();
+      drawItemSpawnerPads();
       drawPickups();
       for (const b of bullets) drawBullet(b);
       for (const tb of taserBullets) drawTaserBullet(tb);
@@ -5694,11 +5718,69 @@
       }
     }
 
+    // 아이템 스폰 패드 — 아이템이 없어도 위치가 보이도록 바닥 마커 표시 (아이템 타이밍 학습용)
+    function drawItemSpawnerPads() {
+      if (gameMode !== "teambattle") return;
+      const now = performance.now() * 0.001;
+      const padCol = { speed: "68,187,255", energy: "204,102,255", shield: "51,255,238" };
+      for (const sp of itemSpawners) {
+        const col = padCol[sp.type] || "255,255,255";
+        const hasItem = sp.pickup && pickups.includes(sp.pickup);
+        ctx.save();
+        ctx.translate(sp.x, sp.y);
+        ctx.strokeStyle = `rgba(${col},${hasItem ? 0.5 : 0.18})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([7, 6]);
+        ctx.rotate(now * 0.6);
+        ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
     function drawPickups() {
       for (const p of pickups) {
         const pulse = 0.5 + Math.sin(p.pulse) * 0.5;
         ctx.save();
         ctx.translate(p.x, p.y);
+        if (p.type === "speed" || p.type === "energy" || p.type === "shield") {
+          const rgb = p.type === "speed" ? "68,187,255" : p.type === "energy" ? "204,102,255" : "51,255,238";
+          ctx.globalCompositeOperation = "lighter";
+          const glow = ctx.createRadialGradient(0, 0, 4, 0, 0, 34 + pulse * 8);
+          glow.addColorStop(0, `rgba(${rgb},0.36)`);
+          glow.addColorStop(1, `rgba(${rgb},0)`);
+          ctx.fillStyle = glow;
+          ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.fill();
+          ctx.globalCompositeOperation = "source-over";
+          ctx.strokeStyle = `rgba(${rgb},0.92)`;
+          ctx.fillStyle = "rgba(10,16,22,0.92)";
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = `rgba(${rgb},0.95)`;
+          if (p.type === "speed") {
+            // 이중 셰브론 (»)
+            ctx.beginPath();
+            ctx.moveTo(-8, -8); ctx.lineTo(-1, 0); ctx.lineTo(-8, 8); ctx.lineTo(-5, 8); ctx.lineTo(2, 0); ctx.lineTo(-5, -8);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(0, -8); ctx.lineTo(7, 0); ctx.lineTo(0, 8); ctx.lineTo(3, 8); ctx.lineTo(10, 0); ctx.lineTo(3, -8);
+            ctx.closePath(); ctx.fill();
+          } else if (p.type === "energy") {
+            // 번개
+            ctx.beginPath();
+            ctx.moveTo(2, -10); ctx.lineTo(-6, 2); ctx.lineTo(-1, 2); ctx.lineTo(-2, 10); ctx.lineTo(6, -2); ctx.lineTo(1, -2);
+            ctx.closePath(); ctx.fill();
+          } else {
+            // 방패
+            ctx.beginPath();
+            ctx.moveTo(0, -10); ctx.lineTo(8, -6); ctx.lineTo(8, 2);
+            ctx.quadraticCurveTo(8, 8, 0, 11);
+            ctx.quadraticCurveTo(-8, 8, -8, 2);
+            ctx.lineTo(-8, -6); ctx.closePath(); ctx.fill();
+          }
+          ctx.restore();
+          continue;
+        }
         ctx.globalCompositeOperation = "lighter";
         const glow = ctx.createRadialGradient(0, 0, 4, 0, 0, 34 + pulse * 8);
         glow.addColorStop(0, "rgba(118, 255, 145, 0.34)");
@@ -9435,14 +9517,17 @@
     //       CS/Valorant의 "레인 입구 코너 엄폐" 구조를 2D 탑다운으로 재해석.
     function tbMapLayout() {
       const W = world.w, H = world.h, t = 42;
-      const bx = 560; // 기지벽(자책존 깊이) 위치
-      const laneTopY = Math.round(H * 0.22);
-      const laneMidY = Math.round(H * 0.50); // = 수송차 기본 진행 라인
-      const laneBotY = Math.round(H * 0.78);
+      const bx = 620; // 기지벽(자책존 깊이) 위치
+      const laneTopY = Math.round(H * 0.20); // 저격 골목 (VIPER) — 긴 시야선
+      const laneMidY = Math.round(H * 0.50); // 수송차 기본 진행 라인 + 중앙 플라자
+      const laneBotY = Math.round(H * 0.80); // 근접전 구역 (BULL) — 밀집 엄폐
       return {
         W, H, t, bx,
         laneTopY, laneMidY, laneBotY,
         blueVaultCX: t + 160, redVaultCX: W - t - 160,
+        // 금고는 중앙 레인이 아니라 상/중 레인 사이(기지 안쪽 위)에 배치 —
+        // 방어팀이 상단·중앙 두 출입구를 모두 커버해야 하는 CS 폭탄사이트식 구조
+        vaultCY: Math.round((H * 0.20 + H * 0.50) / 2),
         blueSpawnCX: bx - 160, redSpawnCX: W - bx + 160,
       };
     }
@@ -9451,17 +9536,17 @@
       ensureAudio();
       gameMode = "teambattle";
       resetWorld();
-      world.w = 3600; world.h = 2000; // 팀배틀 전용 맵 크기 (클래식 모드와 분리)
+      world.w = 4000; world.h = 2400; // 팀배틀 전용 맵 크기 — 8인(4v4) 밀도 대응 (클래식 모드와 분리)
       buildTeamBattleMap();
       const L = tbMapLayout();
       if (playerTeam===0) { player.x=L.blueSpawnCX; player.y=L.laneMidY; player.angle=0; }
       else                { player.x=L.redSpawnCX;  player.y=L.laneMidY; player.angle=Math.PI; }
       player.hp = playerChar.tbHp;
-      // 금고(Vault)로 재정의 — facilities 완전 교체
+      // 금고(Vault)로 재정의 — facilities 완전 교체 (상/중 레인 사이, 기지 안쪽)
       facilities.length=0;
-      facilities.push({ x:L.blueVaultCX-60, y:L.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:0,
+      facilities.push({ x:L.blueVaultCX-60, y:L.vaultCY-100, w:120, h:200, hp:3000, maxHp:3000, team:0,
         isVault:true, destroyed:false, destroyerTeam:null, glowPhase:0 });
-      facilities.push({ x:L.redVaultCX-60, y:L.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:1,
+      facilities.push({ x:L.redVaultCX-60, y:L.vaultCY-100, w:120, h:200, hp:3000, maxHp:3000, team:1,
         isVault:true, destroyed:false, destroyerTeam:null, glowPhase:Math.PI });
       // 리스폰 플랫폼, 터렛, convoy 초기화
       spawnPlatforms = [
@@ -9470,6 +9555,7 @@
       ];
       turrets = [];
       setupTurrets();
+      setupItemSpawners();
       convoy = null;
       playerArmorSuit = false;
       armorSuitCharId = -1;
@@ -9497,11 +9583,18 @@
 
     function setupTurrets() {
       const L = tbMapLayout();
+      // 팀당 3기: 금고 위/아래 근접 방어 2기 + 하단 레인(금고 반대편 약점) 커버 1기.
+      // 수량이 늘어난 대신 단발 데미지 42→28로 하향, HP 400→450 (여러 기를 순서대로 파괴하는 재미)
+      function mkTurret(x, y, team, angle) {
+        return { x, y, team, hp:450, maxHp:450, angle, shootCd:0, alive:true, range:560, dmg:28, hitFlash:0, r:22, fireFlash:0 };
+      }
       turrets = [
-        { x:L.blueVaultCX, y:L.laneTopY, team:0, hp:400, maxHp:400, angle:Math.PI/2,  shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
-        { x:L.blueVaultCX, y:L.laneBotY, team:0, hp:400, maxHp:400, angle:-Math.PI/2, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
-        { x:L.redVaultCX,  y:L.laneTopY, team:1, hp:400, maxHp:400, angle:Math.PI/2,  shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 },
-        { x:L.redVaultCX,  y:L.laneBotY, team:1, hp:400, maxHp:400, angle:-Math.PI/2, shootCd:0, alive:true, range:520, hitFlash:0, r:22, fireFlash:0 }
+        mkTurret(L.blueVaultCX, L.vaultCY-220, 0, Math.PI/2),
+        mkTurret(L.blueVaultCX, L.vaultCY+220, 0, -Math.PI/2),
+        mkTurret(L.t+280,       L.laneBotY,    0, 0),
+        mkTurret(L.redVaultCX,  L.vaultCY-220, 1, Math.PI/2),
+        mkTurret(L.redVaultCX,  L.vaultCY+220, 1, -Math.PI/2),
+        mkTurret(L.W-L.t-280,   L.laneBotY,    1, Math.PI)
       ];
     }
 
@@ -9538,7 +9631,7 @@
             bullets.push({
               x: turret.x + dx * 30, y: turret.y + dy * 30,
               vx: dx * speed, vy: dy * speed,
-              dmg: 42, life: 0.8, team: turret.team, fromTurret: true,
+              dmg: turret.dmg || 42, life: 0.8, team: turret.team, fromTurret: true,
               isBullet: true
             });
             turret.fireFlash = 0.12;
@@ -9730,7 +9823,7 @@
           convoy.stuckTimer = 0;
           convoy.prevDist = null;
         } else {
-          const spd = 55;
+          const spd = 66; // 맵 확장(3600→4000)에 맞춰 55→66 — 하단 우회 경로도 에스코트 페이즈가 늘어지지 않게
           const nx = dx / dist, ny = dy / dist;
 
           // AI 캐릭터와 동일한 벽 슬라이딩 방식 (moveEnemySmart 패턴)
@@ -10063,7 +10156,7 @@
       // +30도 오프셋: 기둥이 정확히 0°/180°(중앙 레인의 수평선)에 놓이면 그 라인이 완전히
       // 막혀버려 convoy 직선 경로가 아예 A*로도 뚫리지 않는 문제가 있었음 — 수평/수직축을
       // 피해서 6개 기둥이 배치되도록 회전.
-      const plazaR = 260, pillarS = 50;
+      const plazaR = 300, pillarS = 55;
       for (let i = 0; i < 6; i++) {
         const ang = (i / 6) * Math.PI * 2 + Math.PI / 6;
         addWall(Math.round(mX + Math.cos(ang)*plazaR - pillarS/2),
@@ -10071,29 +10164,46 @@
                 pillarS, pillarS);
       }
 
-      // ── 레인 중간 엄폐 (기지↔중앙 사이, 55% 지점, 좌우 대칭) — 상/하 레인은 중앙 쪽으로 열린 L자, 중앙 레인은 세로 기둥
+      // ══ 레인별 캐릭터 테마 엄폐 ══
+      // 규칙(수송차 안전): 모든 엄폐는 레인 중심선에서 세로 140px 이상 이격, thin 금지.
+
+      // ── 상단 레인 = 저격 골목 (VIPER) — CS 미드/AWP 골목처럼 레인 라인은 끝까지 뚫려 있고,
+      //    측면(위/아래)에만 짧은 가로 엄폐를 두어 "피킹 vs 저격" 심리전 유도
+      addWall(mX-820, laneTopY-260, 170, c);
+      addWall(mX+650, laneTopY-260, 170, c);
+      addWall(mX-320, laneTopY+170, 170, c);
+      addWall(mX+150, laneTopY+170, 170, c);
+
+      // ── 하단 레인 = 근접전 구역 (BULL) — 배틀필드 오퍼레이션 락커식 밀집 블록,
+      //    짧은 시야 + 모퉁이 다수 (산탄총·C4 유리)
+      addWall(mX-720, laneBotY-320, 200, 80);
+      addWall(mX+520, laneBotY-320, 200, 80);
+      addWall(mX-360, laneBotY+160, 80, 200);
+      addWall(mX+280, laneBotY+160, 80, 200);
+      addWall(mX-100, laneBotY-400, 200, 80);
+      addWall(mX-960, laneBotY+180, 170, c);
+      addWall(mX+790, laneBotY+180, 170, c);
+
+      // ── 레인 간 회전 통로 (Valorant 커넥터식) — 상↔중, 중↔하 사이 세로 벽으로
+      //    로테이션 동선을 만들어 8인 난전에서 우회 플레이 유도
+      addWall(mX-780-c/2, Math.round((laneTopY+laneMidY)/2)-170, c, 340);
+      addWall(mX+780-c/2, Math.round((laneTopY+laneMidY)/2)-170, c, 340);
+      addWall(mX-780-c/2, Math.round((laneMidY+laneBotY)/2)-170, c, 340);
+      addWall(mX+780-c/2, Math.round((laneMidY+laneBotY)/2)-170, c, 340);
+
+      // ── 레인 중간 엄폐 (기지↔중앙 사이, 55% 지점, 좌우 대칭) — 상/하 레인은 중앙 쪽으로 열린 L자
       const q1x = Math.round(bx + t + (mX - bx - t) * 0.55);
       const q3x = W - q1x;
-      // 좌측(q1x): 상단 레인 L (아래로 열림), 하단 레인 L (위로 열림)
-      addWall(q1x-70, laneTopY,      140, c);
-      addWall(q1x-70, laneTopY,      c,   90);
+      addWall(q1x-70, laneTopY+170,  140, c);
       addWall(q1x-70, laneBotY,      140, c);
       addWall(q1x-70, laneBotY-90,   c,   90);
-      // 우측(q3x): 좌측과 좌우대칭 (세로벽이 오른쪽 끝에 붙도록)
-      addWall(q3x-70, laneTopY,      140, c);
-      addWall(q3x+70-c, laneTopY,    c,   90);
+      addWall(q3x-70, laneTopY+170,  140, c);
       addWall(q3x-70, laneBotY,      140, c);
       addWall(q3x+70-c, laneBotY-90, c,   90);
       // 중앙 레인 세로 기둥 한 쌍 — 레인 중심선에서 110px 이상 띄워서
       // margin(52px) 적용 후에도 중심선 셀을 침범하지 않도록 함
       addWall(q1x-c/2, laneMidY-230, c, 120);
       addWall(q3x-c/2, laneMidY+110, c, 120);
-
-      // ── 플랑크 연결 사선 엄폐 (상↔중, 중↔하 레인 사이 이동을 자연스럽게 유도)
-      addWall(Math.round(mX-520), Math.round((laneTopY+laneMidY)/2)-c/2, 110, c);
-      addWall(Math.round(mX+410), Math.round((laneMidY+laneBotY)/2)-c/2, 110, c);
-      addWall(Math.round(mX-410), Math.round((laneMidY+laneBotY)/2)-c/2, 110, c);
-      addWall(Math.round(mX+520), Math.round((laneTopY+laneMidY)/2)-c/2, 110, c);
 
       usingCustomMap=true;
     }
@@ -10106,15 +10216,16 @@
       const blueSpawnX = L.blueSpawnCX;
       const redSpawnX  = L.redSpawnCX;
       const eteam = 1 - playerTeam;
-      const enemyChars = [0, 1, 2, 3].filter(i => i !== playerChar.id);
+      // 8인 네트워크(4v4) 환경과 동일한 인원 구성 — 적팀 4명(전 캐릭터), 아군 3명
+      const enemyChars = [0, 1, 2, 3];
       const faceAngle = eteam === 1 ? Math.PI : 0;
 
-      // 적팀 AI 3명 — 적팀 본진에서 스폰
+      // 적팀 AI 4명 — 적팀 본진에서 스폰
       const eSpawnX = eteam === 1 ? redSpawnX : blueSpawnX;
       enemyChars.forEach((ci, i) => {
         const ch = CHAR_DEFS[ci];
         const sx = eSpawnX + (Math.random() - 0.5) * 80;
-        const sy = spawnY + (i - 1) * 180 + (Math.random() - 0.5) * 40;
+        const sy = spawnY + (i - 1.5) * 150 + (Math.random() - 0.5) * 40;
         aiPlayers.push({
           team: eteam, charIdx: ci, x: sx, y: sy,
           hp: ch.tbHp, maxHp: ch.tbHp,
@@ -10136,15 +10247,15 @@
         });
       });
 
-      // 아군 AI 2명 — 플레이어 본진에서 스폰
+      // 아군 AI 3명 — 플레이어 본진에서 스폰 (플레이어 캐릭터 제외한 3종 → 아군 총 4명)
       const aSpawnX = playerTeam === 0 ? blueSpawnX : redSpawnX;
-      const allyPool = [...enemyChars];
-      for (let i = 0; i < 2; i++) {
+      const allyPool = [0, 1, 2, 3].filter(i => i !== playerChar.id);
+      for (let i = 0; i < 3; i++) {
         const ci = allyPool.splice(Math.floor(Math.random() * allyPool.length), 1)[0];
         const ch = CHAR_DEFS[ci];
         const allyFace = playerTeam === 0 ? 0 : Math.PI;
         const sx = aSpawnX + (Math.random() - 0.5) * 80;
-        const sy = spawnY + (i === 0 ? -180 : 180) + (Math.random() - 0.5) * 40;
+        const sy = spawnY + (i === 0 ? -200 : i === 1 ? 200 : -70) + (Math.random() - 0.5) * 40;
         aiPlayers.push({
           team: playerTeam, charIdx: ci, x: sx, y: sy,
           hp: ch.tbHp, maxHp: ch.tbHp,
@@ -10167,6 +10278,37 @@
       }
     }
 
+    // 고정 아이템 스폰 지점 — Quake/Halo 아레나 슈터의 "타이머 아이템 컨트롤" 방식.
+    // 위치가 항상 같고 15초마다 리스폰되므로, 아이템 타이밍을 장악하는 것 자체가 전략이 된다.
+    function setupItemSpawners() {
+      const L = tbMapLayout();
+      const mX = L.W/2, mY = L.H/2;
+      itemSpawners = [
+        // SPEED — 저격 골목(상단) 한복판: 저격 시야에 노출을 감수하고 줍는 하이리스크 부스터
+        { x: mX-520, y: L.laneTopY, type: "speed",  respawn: 15, timer: 4, pickup: null },
+        { x: mX+520, y: L.laneTopY, type: "speed",  respawn: 15, timer: 4, pickup: null },
+        // ENERGY — 중앙 플라자 안쪽 대각: 스킬 게이지 +50%, 파워오브젝티브와 함께 중앙 쟁탈 유도
+        { x: mX-170, y: mY-170, type: "energy", respawn: 15, timer: 6, pickup: null },
+        { x: mX+170, y: mY+170, type: "energy", respawn: 15, timer: 6, pickup: null },
+        // SHIELD — 근접전 구역(하단): 8초간 받는 피해 50% 감소, 난전 진입용
+        { x: mX-520, y: L.laneBotY, type: "shield", respawn: 18, timer: 8, pickup: null },
+        { x: mX+520, y: L.laneBotY, type: "shield", respawn: 18, timer: 8, pickup: null },
+      ];
+    }
+
+    function updateItemSpawners(dt) {
+      for (const sp of itemSpawners) {
+        if (sp.pickup && pickups.includes(sp.pickup)) continue; // 아직 안 주움
+        sp.pickup = null;
+        sp.timer -= dt;
+        if (sp.timer <= 0) {
+          sp.pickup = { x: sp.x, y: sp.y, r: 17, type: sp.type, life: 99999, pulse: Math.random() * 6 };
+          pickups.push(sp.pickup);
+          sp.timer = sp.respawn;
+        }
+      }
+    }
+
     function setupCrates() {
       crates.length=0;
       const L = tbMapLayout();
@@ -10174,21 +10316,23 @@
       const laneTopY=L.laneTopY, laneMidY=L.laneMidY, laneBotY=L.laneBotY;
       const q1x = Math.round(L.bx + L.t + (mX - L.bx - L.t) * 0.55);
       const q3x = W - q1x;
-      const plazaR = 300;
+      const gapR = 390; // 플라자 기둥 링(300) 바깥 틈새
       [
-        // 중앙 플라자 — 기둥 사이 틈(파워 오브젝티브 쟁탈전 픽업)
-        {x:mX+Math.cos(Math.PI/6)*plazaR,   y:mY+Math.sin(Math.PI/6)*plazaR},
-        {x:mX+Math.cos(5*Math.PI/6)*plazaR, y:mY+Math.sin(5*Math.PI/6)*plazaR},
-        {x:mX+Math.cos(7*Math.PI/6)*plazaR, y:mY+Math.sin(7*Math.PI/6)*plazaR},
-        {x:mX+Math.cos(11*Math.PI/6)*plazaR,y:mY+Math.sin(11*Math.PI/6)*plazaR},
-        // 상/하 레인 L엄폐 근처
-        {x:q1x, y:laneTopY+70}, {x:q3x, y:laneTopY+70},
-        {x:q1x, y:laneBotY-70}, {x:q3x, y:laneBotY-70},
+        // 중앙 플라자 바깥 4귀퉁이 — 기둥 사이 틈(파워 오브젝티브 쟁탈전 픽업)
+        {x:mX+Math.cos(Math.PI/3)*gapR,   y:mY+Math.sin(Math.PI/3)*gapR},
+        {x:mX+Math.cos(2*Math.PI/3)*gapR, y:mY+Math.sin(2*Math.PI/3)*gapR},
+        {x:mX+Math.cos(4*Math.PI/3)*gapR, y:mY+Math.sin(4*Math.PI/3)*gapR},
+        {x:mX+Math.cos(5*Math.PI/3)*gapR, y:mY+Math.sin(5*Math.PI/3)*gapR},
+        // 저격 골목(상단) 측면 엄폐 뒤 — 저격수 자리 회복
+        {x:mX-820+85, y:laneTopY-150}, {x:mX+650+85, y:laneTopY-150},
+        // 근접전 구역(하단) 블록 사이
+        {x:mX-720+100, y:laneBotY-190}, {x:mX+520+100, y:laneBotY-190},
+        {x:mX, y:laneBotY+230},
         // 중앙 레인 기둥 근처
         {x:q1x, y:laneMidY-40}, {x:q3x, y:laneMidY+40},
-        // 플랑크 연결로 근처
-        {x:mX-520+150, y:Math.round((laneTopY+laneMidY)/2)},
-        {x:mX+410-150, y:Math.round((laneMidY+laneBotY)/2)},
+        // 회전 통로 입구
+        {x:mX-780, y:Math.round((laneTopY+laneMidY)/2)+240},
+        {x:mX+780, y:Math.round((laneMidY+laneBotY)/2)-240},
       ]
       .forEach(p=>crates.push({x:Math.round(p.x),y:Math.round(p.y),w:60,h:60,hp:280,maxHp:280,dead:false}));
     }
@@ -10606,9 +10750,10 @@
           // 벽에 막히지 않았을 때만 데미지
           if (!wallBlocked && hits) {
             const _aiFireArmorMult = (ai.team !== playerTeam && playerArmorSuit) ? 0.5 : 1.0;
+            const _shieldMult = (player.shieldTimer > 0 ? 0.5 : 1.0); // SHIELD 아이템
             const finalDmg = wDmg * (hpFrac < 0.5 ? 0.85 : 1.0) * _aiFireArmorMult;
             if (effTgt.isPlayer && player.invuln <= 0) {
-              player.hp = Math.max(0, player.hp - finalDmg);
+              player.hp = Math.max(0, player.hp - finalDmg * _shieldMult);
               player.invuln = 0.08;
               shake = Math.max(shake, 5);
               screenDmgFlash = Math.min(1, screenDmgFlash + finalDmg / 250);
@@ -12311,21 +12456,22 @@
       playerTeam = tbLobbyMyTeam < 0 ? 0 : tbLobbyMyTeam;
       ensureAudio();
       resetWorld();
-      world.w = 3600; world.h = 2000;
+      world.w = 4000; world.h = 2400;
       buildTeamBattleMap();
       const L1 = tbMapLayout();
 
       // 시설물 & 초기 배치
       facilities.length = 0;
-      facilities.push({ x:L1.blueVaultCX-60, y:L1.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:0,
+      facilities.push({ x:L1.blueVaultCX-60, y:L1.vaultCY-100, w:120, h:200, hp:3000, maxHp:3000, team:0,
         isVault:true, destroyed:false, destroyerTeam:null, glowPhase:0 });
-      facilities.push({ x:L1.redVaultCX-60, y:L1.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:1,
+      facilities.push({ x:L1.redVaultCX-60, y:L1.vaultCY-100, w:120, h:200, hp:3000, maxHp:3000, team:1,
         isVault:true, destroyed:false, destroyerTeam:null, glowPhase:Math.PI });
       spawnPlatforms = [
         { x:L1.blueSpawnCX, y:L1.laneMidY, r:110, team:0, glowPhase:0 },
         { x:L1.redSpawnCX,  y:L1.laneMidY, r:110, team:1, glowPhase:Math.PI }
       ];
       turrets = []; setupTurrets();
+      setupItemSpawners();
       teamBattleWon = null; tbTimer = 0;
 
       // 호스트 플레이어 위치
@@ -12423,15 +12569,15 @@
       const myEntry = d.netPlayers.find(p => p.id === myNetId);
       ensureAudio();
       resetWorld();
-      world.w = 3600; world.h = 2000;
+      world.w = 4000; world.h = 2400;
       buildTeamBattleMap();
       const L2 = tbMapLayout();
       facilities.length = 0;
       if (d.facilities) d.facilities.forEach(f => facilities.push({...f}));
       else {
-        facilities.push({ x:L2.blueVaultCX-60, y:L2.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:0,
+        facilities.push({ x:L2.blueVaultCX-60, y:L2.vaultCY-100, w:120, h:200, hp:3000, maxHp:3000, team:0,
           isVault:true, destroyed:false, destroyerTeam:null, glowPhase:0 });
-        facilities.push({ x:L2.redVaultCX-60, y:L2.laneMidY-100, w:120, h:200, hp:3000, maxHp:3000, team:1,
+        facilities.push({ x:L2.redVaultCX-60, y:L2.vaultCY-100, w:120, h:200, hp:3000, maxHp:3000, team:1,
           isVault:true, destroyed:false, destroyerTeam:null, glowPhase:Math.PI });
       }
       spawnPlatforms = [
@@ -12439,6 +12585,7 @@
         { x:L2.redSpawnCX,  y:L2.laneMidY, r:110, team:1, glowPhase:Math.PI }
       ];
       turrets = []; setupTurrets();
+      setupItemSpawners();
       teamBattleWon = null; tbTimer = 0;
       player.hp = playerChar.tbHp;
       if (myEntry) { player.x = myEntry.x; player.y = myEntry.y; }
